@@ -4,7 +4,7 @@ struct SettingsScene: Scene {
     var body: some Scene {
         Settings {
             SettingsRoot()
-                .frame(minWidth: 560, minHeight: 420)
+                .frame(minWidth: 720, minHeight: 520)
         }
     }
 }
@@ -16,10 +16,10 @@ private struct SettingsRoot: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             ModelsSettingsView()
                 .tabItem { Label("Models", systemImage: "cpu") }
+            PromptsSettingsView()
+                .tabItem { Label("Prompts", systemImage: "text.quote") }
             CaptureSettingsView()
                 .tabItem { Label("Capture", systemImage: "text.cursor") }
-            ResponseSettingsView()
-                .tabItem { Label("Response", systemImage: "text.bubble") }
             PermissionsView()
                 .tabItem { Label("Permissions", systemImage: "lock.shield") }
         }

@@ -16,5 +16,9 @@ struct LLMRequest {
     var messages: [ChatMessage]
     var temperature: Double?
     var maxTokens: Int?
+    /// Per-request override for the model's reasoning effort. When non-nil and
+    /// non-empty, overrides `model.reasoningEffort`. When nil, the model's own
+    /// value is used.
+    var reasoningEffort: String?
     var stream: Bool
 }

@@ -6,12 +6,14 @@ final class FloatingPanelController {
     private let panel: FloatingPanel
     private let viewModel: PanelViewModel
     private let modelStore: ModelStore
+    private let presetStore: PromptPresetStore
     private let settings: SettingsStore
 
-    init(modelStore: ModelStore, registry: ProviderRegistry, settings: SettingsStore) {
+    init(modelStore: ModelStore, presetStore: PromptPresetStore, registry: ProviderRegistry, settings: SettingsStore) {
         self.modelStore = modelStore
+        self.presetStore = presetStore
         self.settings = settings
-        self.viewModel = PanelViewModel(modelStore: modelStore, registry: registry, settings: settings)
+        self.viewModel = PanelViewModel(modelStore: modelStore, presetStore: presetStore, registry: registry, settings: settings)
         self.panel = FloatingPanel(contentRect: NSRect(origin: .zero, size: PanelPositioner.defaultSize))
 
         let host = NSHostingView(rootView: PanelView(viewModel: viewModel, onClose: { [weak self] in
@@ -21,12 +23,27 @@ final class FloatingPanelController {
         panel.contentView = host
     }
 
+    /// Present with the default preset.
     func present(with bundle: ContextBundle, autoSend: Bool) {
-        viewModel.reset(with: bundle)
-        PanelPositioner.position(panel: panel)
-        panel.orderFrontRegardless()
+        present(with: bundle, preset: presetStore.defaultPreset, autoSendOverride: autoSend)
+    }
 
-        if autoSend, !bundle.selectedText.isEmpty, viewModel.canSend {
+    /// Present pre-bound to a specific preset (used by per-preset hotkeys and
+    /// the status-bar submenu). When `autoSendOverride` is nil, the preset's
+    /// own `autoSend` flag wins.
+    func present(with bundle: ContextBundle, preset: PromptPreset?, autoSendOverride: Bool? = nil) {
+        viewModel.reset(with: bundle, presetOverride: preset)
+        PanelPositioner.position(panel: panel)
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+
+        let shouldAutoSend: Bool
+        if let override = autoSendOverride {
+            shouldAutoSend = override && (preset?.autoSend ?? true)
+        } else {
+            shouldAutoSend = preset?.autoSend ?? false
+        }
+        if shouldAutoSend, viewModel.canSend {
             viewModel.send()
         }
     }

@@ -56,12 +56,16 @@ The MVP ships only `OpenAICompatibleClient`, but the protocol seam is in place. 
 
 5. **No UI change required** — `ModelsSettingsView` already iterates `ProviderKind.allCases` for the picker. New providers appear automatically.
 
-## Add a new prompt mode
+## Add a built-in default behavior — or just author a preset
 
-1. **Add a case** in `InlineLLMLens/Prompt/PromptMode.swift` and update `displayName`.
-2. **Add the mode-specific system instruction** in `InlineLLMLens/Prompt/SystemPrompts.swift` inside the `instruction(for:translateTarget:lengthHint:customInstruction:)` switch.
-3. **Test** in `InlineLLMLensTests/PromptBuilderTests.swift` — assert the new instruction appears in the system message and the selected text appears in the user message.
-4. The `ModePicker` view auto-discovers new cases.
+Prompt behavior is owned by user-defined `PromptPreset`s now; there's no enum to extend. To ship a new "out of the box" persona, edit `PromptPreset.seed` in `InlineLLMLens/Prompts/PromptPreset.swift` (used only on first launch when `prompts.json` is empty). Otherwise just create the preset in **Settings → Prompts**.
+
+If you're adding a new template variable (currently `{{selection}}`, `{{userInput}}`, `{{app}}`, `{{windowTitle}}`, `{{date}}`):
+
+1. Add it to the `substitutions` dictionary in `PromptBuilder.expand`.
+2. Add it to the `known` set in `PromptBuilder.unknownVariables` so the editor's preview pane stops flagging it.
+3. Pass the value through from `PanelViewModel` / `FloatingPanelController` if it isn't already on `ContextBundle`.
+4. Add a test in `PromptResolutionTests`.
 
 ## Add a new capture strategy
 

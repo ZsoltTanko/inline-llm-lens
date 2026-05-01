@@ -32,7 +32,15 @@ If a Service entry doesn't appear in the right-click menu, see [`docs/TROUBLESHO
 
 ## Quick start (contributors)
 
-Read these in order:
+For day-to-day iteration, the one command you need is:
+
+```bash
+./bin/dev-restart.sh
+```
+
+It regenerates the Xcode project if `project.yml` changed, kills any running copy, builds, re-registers with Launch Services (so the right-click Services menu picks up changes), and relaunches. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md#iteration-loop-terminal-driven) for what it does and why.
+
+Then read these in order:
 
 1. [`mvp_spec.md`](mvp_spec.md) — what we're building and why.
 2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the codebase is laid out, the request pipeline, key types, threading model.
@@ -60,12 +68,13 @@ text-select-llm/
 │   ├── Hotkey/                Global hotkey via KeyboardShortcuts SPM package
 │   ├── Services/              macOS Services / right-click integration
 │   ├── Capture/               Selected-text capture strategies (AX, clipboard, manual)
-│   ├── Prompt/                PromptMode enum + system prompts + PromptBuilder
+│   ├── Prompt/                PromptBuilder + variable expansion
+│   ├── Prompts/               PromptPreset + PromptPresetStore (user-defined)
 │   ├── LLM/                   LLMProvider protocol + OpenAI-compatible client
 │   ├── Models/                ModelConfig + ModelStore
 │   ├── Storage/               KeychainStore, SettingsStore, optional history
 │   ├── Panel/                 Floating NSPanel + SwiftUI panel content
-│   ├── Settings/              SwiftUI Settings scene (5 tabs)
+│   ├── Settings/              SwiftUI Settings scene (5 tabs incl. Prompts)
 │   ├── Onboarding/            First-launch onboarding window
 │   └── Util/                  Logger, debouncer, launch-at-login
 └── InlineLLMLensTests/        XCTest unit tests

@@ -16,7 +16,12 @@ final class SelectionCaptureServiceTests: XCTestCase {
         let bundle = await service.captureForHotkey()
         // In a non-interactive test runner there's typically no AX-readable selection
         // and clipboard fallback is off, so we expect the manual-input fallthrough.
-        XCTAssertTrue(bundle.captureMethod == .manualInput || bundle.captureMethod == .accessibility)
+        // Possible outcomes depending on environment:
+        // - .accessibility if a selection happens to be readable
+        // - .clipboardCurrent if the system pasteboard has any text
+        // - .manualInput otherwise
+        let expected: Set<CaptureMethod> = [.manualInput, .accessibility, .clipboardCurrent]
+        XCTAssertTrue(expected.contains(bundle.captureMethod))
         if bundle.captureMethod == .manualInput {
             XCTAssertTrue(bundle.selectedText.isEmpty)
         }

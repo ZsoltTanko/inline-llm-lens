@@ -3,7 +3,6 @@ import SwiftUI
 struct CaptureSettingsView: View {
     @AppStorage(SettingsStore.Keys.clipboardFallbackEnabled) private var clipboardFallback: Bool = false
     @AppStorage(SettingsStore.Keys.restoreClipboardAfterCapture) private var restoreClipboard: Bool = true
-    @AppStorage(SettingsStore.Keys.includeAppContext) private var includeAppContext: Bool = true
 
     var body: some View {
         Form {
@@ -32,7 +31,9 @@ struct CaptureSettingsView: View {
             }
 
             Section("Context") {
-                Toggle("Include frontmost app and window title in prompt", isOn: $includeAppContext)
+                Text("Frontmost app and window title are available to prompt presets via the {{app}} and {{windowTitle}} variables. Add them to a preset's system prompt where useful.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

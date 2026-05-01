@@ -7,27 +7,11 @@ import SwiftUI
 final class SettingsStore: ObservableObject {
     static let shared = SettingsStore()
 
-    enum ResponseLength: String, Codable, CaseIterable, Identifiable {
-        case concise, normal, detailed
-        var id: String { rawValue }
-        var displayName: String {
-            switch self {
-            case .concise: return "Concise"
-            case .normal: return "Normal"
-            case .detailed: return "Detailed"
-            }
-        }
-    }
-
     enum Keys {
-        static let defaultPromptMode = "settings.defaultPromptMode"
         static let autoSendOnInvocation = "settings.autoSendOnInvocation"
         static let streamResponses = "settings.streamResponses"
-        static let responseLength = "settings.responseLength"
-        static let translateTargetLanguage = "settings.translateTargetLanguage"
         static let clipboardFallbackEnabled = "settings.clipboardFallbackEnabled"
         static let restoreClipboardAfterCapture = "settings.restoreClipboardAfterCapture"
-        static let includeAppContext = "settings.includeAppContext"
         static let historyEnabled = "settings.historyEnabled"
         static let launchAtLogin = "settings.launchAtLogin"
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
@@ -39,14 +23,10 @@ final class SettingsStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         defaults.register(defaults: [
-            Keys.defaultPromptMode: PromptMode.explain.rawValue,
             Keys.autoSendOnInvocation: true,
             Keys.streamResponses: true,
-            Keys.responseLength: ResponseLength.normal.rawValue,
-            Keys.translateTargetLanguage: "English",
-            Keys.clipboardFallbackEnabled: false,
+            Keys.clipboardFallbackEnabled: true,
             Keys.restoreClipboardAfterCapture: true,
-            Keys.includeAppContext: true,
             Keys.historyEnabled: false,
             Keys.launchAtLogin: false,
             Keys.hasCompletedOnboarding: false,
@@ -55,11 +35,6 @@ final class SettingsStore: ObservableObject {
     }
 
     // MARK: - Typed accessors
-
-    var defaultPromptMode: PromptMode {
-        get { PromptMode(rawValue: defaults.string(forKey: Keys.defaultPromptMode) ?? "") ?? .explain }
-        set { defaults.set(newValue.rawValue, forKey: Keys.defaultPromptMode); objectWillChange.send() }
-    }
 
     var autoSendOnInvocation: Bool {
         get { defaults.bool(forKey: Keys.autoSendOnInvocation) }
@@ -71,16 +46,6 @@ final class SettingsStore: ObservableObject {
         set { defaults.set(newValue, forKey: Keys.streamResponses); objectWillChange.send() }
     }
 
-    var responseLength: ResponseLength {
-        get { ResponseLength(rawValue: defaults.string(forKey: Keys.responseLength) ?? "") ?? .normal }
-        set { defaults.set(newValue.rawValue, forKey: Keys.responseLength); objectWillChange.send() }
-    }
-
-    var translateTargetLanguage: String {
-        get { defaults.string(forKey: Keys.translateTargetLanguage) ?? "English" }
-        set { defaults.set(newValue, forKey: Keys.translateTargetLanguage); objectWillChange.send() }
-    }
-
     var clipboardFallbackEnabled: Bool {
         get { defaults.bool(forKey: Keys.clipboardFallbackEnabled) }
         set { defaults.set(newValue, forKey: Keys.clipboardFallbackEnabled); objectWillChange.send() }
@@ -89,11 +54,6 @@ final class SettingsStore: ObservableObject {
     var restoreClipboardAfterCapture: Bool {
         get { defaults.bool(forKey: Keys.restoreClipboardAfterCapture) }
         set { defaults.set(newValue, forKey: Keys.restoreClipboardAfterCapture); objectWillChange.send() }
-    }
-
-    var includeAppContext: Bool {
-        get { defaults.bool(forKey: Keys.includeAppContext) }
-        set { defaults.set(newValue, forKey: Keys.includeAppContext); objectWillChange.send() }
     }
 
     var historyEnabled: Bool {

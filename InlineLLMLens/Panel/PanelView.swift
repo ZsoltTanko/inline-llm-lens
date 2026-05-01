@@ -30,6 +30,13 @@ struct PanelView: View {
                 .foregroundStyle(AccessibilityCapture.isTrusted ? .green : .orange)
             Text("AX: \(AccessibilityCapture.isTrusted ? "trusted" : "not trusted")")
             Text("· capture: \(viewModel.bundle.captureMethod.rawValue)")
+            if let preset = viewModel.selectedPreset {
+                Text("· preset: \(preset.name)")
+                if let model = viewModel.selectedModel,
+                   let effort = PromptBuilder.effectiveReasoningEffort(preset: preset, model: model) {
+                    Text("· reasoning: \(effort)")
+                }
+            }
             if let app = viewModel.bundle.frontmostAppName {
                 Text("· from: \(app)")
             }
@@ -48,10 +55,18 @@ struct PanelView: View {
             Text("Ask LLM")
                 .font(.system(size: 13, weight: .semibold))
             Spacer()
-            ModePicker(mode: $viewModel.mode)
-                .frame(maxWidth: 140)
+            PresetPicker(presetStore: viewModel.presetStore, selectedID: $viewModel.selectedPresetID, onChange: { viewModel.onPresetChanged() })
+                .frame(maxWidth: 160)
             ModelPicker(modelStore: viewModel.modelStore, selectedID: $viewModel.selectedModelID)
                 .frame(maxWidth: 160)
+            Button {
+                AppDelegate.openSettings()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.plain)
+            .help("Settings (⌘,)")
+            .keyboardShortcut(",", modifiers: [.command])
             Button(action: onClose) { Image(systemName: "xmark.circle.fill") }
                 .buttonStyle(.plain)
                 .help("Close (Esc)")
@@ -100,10 +115,14 @@ struct PanelView: View {
 
     private var responseSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if viewModel.mode == .custom {
-                TextField("Ask anything about the selection…", text: $viewModel.customInstruction, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...3)
+            if let preset = viewModel.selectedPreset, preset.requiresUserInput {
+                TextField(
+                    preset.userInputPlaceholder ?? "Instruction…",
+                    text: $viewModel.userInput,
+                    axis: .vertical
+                )
+                .textFieldStyle(.roundedBorder)
+                .lineLimit(1...3)
             }
 
             if let err = viewModel.lastError {

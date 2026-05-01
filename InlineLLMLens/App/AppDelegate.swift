@@ -1,11 +1,14 @@
 import AppKit
 import SwiftUI
+import KeyboardShortcuts
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static var shared: AppDelegate!
 
     let modelStore = ModelStore()
+    let presetStore = PromptPresetStore()
     let settings = SettingsStore.shared
     let registry: ProviderRegistry
     let captureService: SelectionCaptureService
@@ -13,12 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var menuBarController: MenuBarController?
     private var hotkeyManager: HotkeyManager?
+    private var presetCancellable: AnyCancellable?
 
     override init() {
         self.registry = ProviderRegistry(modelStore: modelStore)
         self.captureService = SelectionCaptureService(settings: settings)
         self.panelController = FloatingPanelController(
             modelStore: modelStore,
+            presetStore: presetStore,
             registry: registry,
             settings: settings
         )
@@ -29,12 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        menuBarController = MenuBarController(
-            onAsk: { [weak self] in self?.invokeFromMenu() },
-            onSettings: { Self.openSettings() },
-            onPermissions: { [weak self] in self?.panelController.showPermissionsCheck() },
-            onQuit: { NSApp.terminate(nil) }
-        )
+        rebuildMenuBar()
+        // Rebuild the menu bar's "Prompt presets" submenu whenever the catalog changes.
+        presetCancellable = presetStore.$presets
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.rebuildMenuBar()
+                self?.registerPerPresetHotkeys()
+            }
 
         ServicesHandler.shared.configure(
             panelController: panelController,
@@ -44,30 +51,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = ServicesHandler.shared
         NSUpdateDynamicServices()
 
-        hotkeyManager = HotkeyManager { [weak self] in
-            self?.invokeFromHotkey()
-        }
+        hotkeyManager = HotkeyManager(
+            onInvoke: { [weak self] in self?.invokeFromHotkey(preset: nil) },
+            onInvokePreset: { [weak self] preset in self?.invokeFromHotkey(preset: preset) }
+        )
         hotkeyManager?.start()
+        registerPerPresetHotkeys()
 
         if !settings.hasCompletedOnboarding {
             OnboardingWindow.show()
         }
     }
 
-    func invokeFromHotkey() {
+    private func rebuildMenuBar() {
+        menuBarController = MenuBarController(
+            presetStore: presetStore,
+            onAsk: { [weak self] in self?.invokeFromMenu(preset: nil) },
+            onAskWithPreset: { [weak self] preset in self?.invokeFromMenu(preset: preset) },
+            onSettings: { Self.openSettings() },
+            onPermissions: { [weak self] in self?.panelController.showPermissionsCheck() },
+            onQuit: { NSApp.terminate(nil) }
+        )
+    }
+
+    private func registerPerPresetHotkeys() {
+        hotkeyManager?.syncPresetHotkeys(presets: presetStore.presets) { [weak self] preset in
+            self?.invokeFromHotkey(preset: preset)
+        }
+    }
+
+    func invokeFromHotkey(preset: PromptPreset?) {
         Task { @MainActor in
             if !AccessibilityCapture.isTrusted {
                 AccessibilityCapture.requestTrust()
             }
             let bundle = await captureService.captureForHotkey()
-            panelController.present(with: bundle, autoSend: settings.autoSendOnInvocation)
+            // For the global "ask" hotkey, fall back to the legacy auto-send
+            // setting; for per-preset hotkeys, the preset's own flag wins.
+            if let preset {
+                panelController.present(with: bundle, preset: preset, autoSendOverride: nil)
+            } else {
+                panelController.present(with: bundle, autoSend: settings.autoSendOnInvocation)
+            }
         }
     }
 
-    func invokeFromMenu() {
+    func invokeFromMenu(preset: PromptPreset?) {
         Task { @MainActor in
             let bundle = await captureService.captureForHotkey()
-            panelController.present(with: bundle, autoSend: false)
+            panelController.present(with: bundle, preset: preset ?? presetStore.defaultPreset, autoSendOverride: false)
         }
     }
 
@@ -79,7 +111,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        DispatchQueue.main.async {
+        // The floating panel sits at .floating level and would occlude the
+        // Settings window. Hide it so Settings is actually visible.
+        shared.panelController.close()
+
+        // Delay so the policy switch + status-menu dismissal can settle before
+        // we dispatch the action; otherwise Settings can fail to present.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             if #available(macOS 14.0, *) {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
             } else {
@@ -97,15 +135,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] note in
             guard let window = note.object as? NSWindow else { return }
-            // SwiftUI Settings windows have title "Settings" (or localized) and a known autosave name.
-            let isSettings = window.frameAutosaveName.contains("Settings")
+            let titleLooksLikeSettings = window.frameAutosaveName.contains("Settings")
                 || window.title.localizedCaseInsensitiveContains("settings")
                 || window.identifier?.rawValue.contains("Settings") == true
-            guard isSettings else { return }
-            NSApp.setActivationPolicy(.accessory)
-            if let obs = self?.settingsCloseObserver {
-                NotificationCenter.default.removeObserver(obs)
-                self?.settingsCloseObserver = nil
+            let isOurFloatingPanel = window is FloatingPanel
+            guard titleLooksLikeSettings || !isOurFloatingPanel else { return }
+            DispatchQueue.main.async {
+                let stillHasVisibleSettings = NSApp.windows.contains { w in
+                    guard w.isVisible, !(w is FloatingPanel) else { return false }
+                    return w.frameAutosaveName.contains("Settings")
+                        || w.title.localizedCaseInsensitiveContains("settings")
+                        || w.identifier?.rawValue.contains("Settings") == true
+                }
+                guard !stillHasVisibleSettings else { return }
+                NSApp.setActivationPolicy(.accessory)
+                if let obs = self?.settingsCloseObserver {
+                    NotificationCenter.default.removeObserver(obs)
+                    self?.settingsCloseObserver = nil
+                }
             }
         }
     }

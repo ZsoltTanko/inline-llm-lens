@@ -19,13 +19,14 @@ The codebase is organized by feature module under `InlineLLMLens/`. Each module 
 | `Storage/` | `KeychainStore` (Keychain Services wrapper), `SettingsStore` (typed `UserDefaults` facade), `LocalHistoryStore` (optional, off by default). |
 | `Models/` | `ModelConfig` (Codable struct describing one provider+model+key combo), `ProviderKind` enum, `ModelStore` (CRUD + persistence). |
 | `LLM/` | `LLMProvider` protocol, request/response/error types, `OpenAICompatibleClient`, `ProviderRegistry` (maps `ModelConfig.provider` → concrete client). |
-| `Prompt/` | `PromptMode` enum, `SystemPrompts` (per-mode system prompt strings), `PromptBuilder` (assembles `[ChatMessage]` from a `ContextBundle` + mode + settings). |
+| `Prompt/` | `PromptBuilder` — variable expansion (`{{selection}}`, `{{userInput}}`, `{{app}}`, `{{windowTitle}}`, `{{date}}`) and message assembly. |
+| `Prompts/` | `PromptPreset` (user-defined recipe: system prompt + behavior flags + optional model / inference overrides + per-preset hotkey) and `PromptPresetStore` (CRUD, persistence, import/export). |
 | `Capture/` | `ContextBundle` and `CaptureMethod` data types, individual capture strategies (`AccessibilityCapture`, `ClipboardFallbackCapture`, `ManualInputCapture`), and the orchestrating `SelectionCaptureService`. |
 | `Hotkey/` | `HotkeyManager` (thin wrapper over the `KeyboardShortcuts` SPM package) and `ShortcutNames` (typed shortcut identifiers). |
 | `Services/` | `ServicesHandler` — exposes the `@objc askInlineLLM(_:userData:error:)` selector that macOS Services calls. |
 | `MenuBar/` | `MenuBarController` — owns the `NSStatusItem` and its `NSMenu`. |
-| `Panel/` | The floating response panel: `FloatingPanel` (NSPanel subclass), `FloatingPanelController`, `PanelPositioner`, `PanelView` (SwiftUI), `PanelViewModel`, plus subviews (`ModePicker`, `ModelPicker`, `MarkdownResponseView`). |
-| `Settings/` | SwiftUI `Settings { }` scene with five tabs: General, Models, Capture, Response, Permissions. |
+| `Panel/` | The floating response panel: `FloatingPanel` (NSPanel subclass), `FloatingPanelController`, `PanelPositioner`, `PanelView` (SwiftUI), `PanelViewModel`, plus subviews (`PresetPicker`, `ModelPicker`, `MarkdownResponseView`). |
+| `Settings/` | SwiftUI `Settings { }` scene with five tabs: General, Models, Prompts, Capture, Permissions. |
 | `Onboarding/` | First-launch onboarding window. |
 | `App/` | Entry point: `InlineLLMLensApp` (SwiftUI `@main`), `AppDelegate` (wires everything together), `Info.plist`, entitlements. |
 
@@ -58,7 +59,7 @@ flowchart TD
   AutoSend -->|no| Wait[Wait for user]
   Wait --> Send
 
-  Send --> Build["PromptBuilder.buildInitial\n→ ChatMessages"]
+  Send --> Build["PromptBuilder.resolve\n→ ChatMessages + PromptResolution"]
   Build --> Reg[ProviderRegistry.provider]
   Reg --> Cli[OpenAICompatibleClient]
   Cli -->|"AsyncThrowingStream(LLMToken)"| VM2[PanelViewModel: append delta]
@@ -75,13 +76,13 @@ flowchart TD
 
 The Services entry point (`.servicesInput`) bypasses this orchestration entirely — macOS hands the selected text directly to `ServicesHandler` via the system pasteboard, which is the most reliable capture method.
 
-**Prompt assembly.** `PromptBuilder.buildInitial(bundle:mode:customInstruction:)` returns `[ChatMessage]`:
+**Prompt assembly.** `PromptBuilder.resolve(preset:bundle:userInput:model:)` returns `(messages: [ChatMessage], resolution: PromptResolution)`:
 
-- A system message combining `SystemPrompts.base` (the spec's default system prompt) with a mode-specific instruction (e.g. "Explain the selected text in context…") and a length hint derived from `SettingsStore.responseLength`.
-- An optional weak-context block ("Frontmost app: …, Window title: …") if the user enabled "include app/window title in prompt".
-- A user message containing the selected text, framed as `Selected text:\n"""\n…\n"""`. Custom mode merges the user's instruction with the selection.
+- The **system message** is the active `PromptPreset.systemPrompt` with template variables expanded — `{{selection}}`, `{{userInput}}`, `{{app}}`, `{{windowTitle}}`, `{{date}}`. Unknown variables pass through verbatim so authors notice them in the response (and the editor's preview pane warns about them).
+- The **user message** is the captured selected text, verbatim. There's no second author-controlled user template — the contract is "system prompt instructs, user message is the selection".
+- The `PromptResolution` snapshot captures the rendered messages plus the effective model and inference parameters. This is what `LocalHistoryStore` records so re-reading old history always shows what actually went over the wire even after the source preset is edited or deleted.
 
-The model is told that app/window metadata is weak context and should not over-infer from it.
+**Per-preset overrides.** A `PromptPreset` can pin a `preferredModelID` and override `temperature`, `maxOutputTokens`, and `reasoningEffort`. Each is nullable and falls back to whatever the model itself has configured. Reasoning effort is treated as opaque text (`"minimal"`, `"low"`, `"high"`, `"xhigh"`, …) and only emitted to providers that accept the field.
 
 **Provider dispatch.** `ProviderRegistry.provider(for: ModelConfig)` switches on `ModelConfig.provider` and returns a concrete `LLMProvider`. Today the only case is `.openAICompatible` → `OpenAICompatibleClient`. To add Anthropic native, see [`EXTENDING.md`](EXTENDING.md).
 
@@ -102,7 +103,8 @@ These are the few types you should internalize before changing anything:
 
 - `ContextBundle` (`Capture/ContextBundle.swift`) — the per-invocation envelope: `selectedText`, `frontmostAppName`, `frontmostWindowTitle`, `captureMethod`, `timestamp`. Future richer context (surrounding text, URL, screenshot) will be added here.
 - `CaptureMethod` (`Capture/CaptureMethod.swift`) — `servicesInput | accessibility | clipboardFallback | manualInput`. Surfaced in the panel's diagnostics footer for debugging.
-- `PromptMode` (`Prompt/PromptMode.swift`) — `explain | define | summarize | rewrite | translate | critique | custom`. Each maps to a system-prompt fragment in `SystemPrompts`.
+- `PromptPreset` (`Prompts/PromptPreset.swift`) — user-defined recipe. Owns the system prompt template plus behavior flags (`requiresUserInput`, `requiresSelection`, `autoSend`), optional `preferredModelID` / `temperature` / `maxOutputTokens` / `reasoningEffort` overrides, dropdown pinning, and stable hotkey identifier (`hotkeyShortcutKey`).
+- `PromptResolution` (`Prompt/PromptBuilder.swift`) — snapshot of how a single invocation was rendered. Stored on history entries so editing a preset later never rewrites the past.
 - `ModelConfig` (`Models/ModelConfig.swift`) — one provider+model+key triple. `apiKeyReference` is the Keychain account name (defaults to the model's UUID). `reasoningEffort: String?` is sent verbatim as `reasoning_effort` when non-empty.
 - `LLMProvider` (`LLM/LLMProvider.swift`) — `streamResponse(request:)` and `complete(request:)`. The seam at which provider implementations swap.
 - `LLMRequest` / `ChatMessage` / `Role` (`LLM/LLMRequest.swift`) — provider-neutral request shape.

@@ -5,40 +5,40 @@ import Combine
 final class PanelViewModel: ObservableObject {
     @Published var bundle: ContextBundle = .empty()
     @Published var manualSelectedText: String = ""
-    @Published var mode: PromptMode
+    @Published var selectedPresetID: UUID?
     @Published var selectedModelID: UUID?
-    @Published var customInstruction: String = ""
+    @Published var userInput: String = ""
     @Published var followUpInput: String = ""
 
     @Published private(set) var conversation: [ChatMessage] = []
     @Published private(set) var streamingText: String = ""
     @Published private(set) var isStreaming: Bool = false
     @Published private(set) var lastError: String?
+    @Published private(set) var lastResolution: PromptResolution?
 
     let modelStore: ModelStore
-    private let registry: ProviderRegistry
+    let presetStore: PromptPresetStore
     let settings: SettingsStore
-    private let promptBuilder: PromptBuilder
+    private let registry: ProviderRegistry
+    private let promptBuilder = PromptBuilder()
 
     private var streamTask: Task<Void, Never>?
 
-    init(modelStore: ModelStore, registry: ProviderRegistry, settings: SettingsStore) {
+    init(modelStore: ModelStore, presetStore: PromptPresetStore, registry: ProviderRegistry, settings: SettingsStore) {
         self.modelStore = modelStore
+        self.presetStore = presetStore
         self.registry = registry
         self.settings = settings
-        self.promptBuilder = PromptBuilder(settings: settings)
-        self.mode = settings.defaultPromptMode
-        self.selectedModelID = modelStore.defaultModel?.id
+        self.selectedPresetID = presetStore.defaultPreset?.id
+        self.selectedModelID = effectiveModel(for: presetStore.defaultPreset)?.id
     }
 
     var effectiveSelectedText: String {
         bundle.selectedText.isEmpty ? manualSelectedText : bundle.selectedText
     }
 
-    var canSend: Bool {
-        guard selectedModel != nil else { return false }
-        if mode == .custom { return !customInstruction.trimmingCharacters(in: .whitespaces).isEmpty || !effectiveSelectedText.isEmpty }
-        return !effectiveSelectedText.isEmpty
+    var selectedPreset: PromptPreset? {
+        presetStore.preset(byID: selectedPresetID) ?? presetStore.defaultPreset
     }
 
     var selectedModel: ModelConfig? {
@@ -46,54 +46,102 @@ final class PanelViewModel: ObservableObject {
         return modelStore.defaultModel
     }
 
-    func reset(with bundle: ContextBundle) {
+    var canSend: Bool {
+        guard let preset = selectedPreset, selectedModel != nil else { return false }
+        if preset.requiresSelection, effectiveSelectedText.isEmpty { return false }
+        if preset.requiresUserInput, userInput.trimmingCharacters(in: .whitespaces).isEmpty {
+            return false
+        }
+        // If neither selection nor user input is required, still need *something*
+        // to send to the model (avoid empty user message + empty system).
+        if effectiveSelectedText.isEmpty
+            && userInput.trimmingCharacters(in: .whitespaces).isEmpty
+            && preset.systemPrompt.trimmingCharacters(in: .whitespaces).isEmpty {
+            return false
+        }
+        return true
+    }
+
+    func reset(with bundle: ContextBundle, presetOverride: PromptPreset? = nil) {
         cancelStreaming()
         self.bundle = bundle
         self.manualSelectedText = ""
-        self.mode = settings.defaultPromptMode
-        self.selectedModelID = modelStore.defaultModel?.id
-        self.customInstruction = ""
+        let preset = presetOverride ?? presetStore.defaultPreset
+        self.selectedPresetID = preset?.id
+        self.selectedModelID = effectiveModel(for: preset)?.id
+        self.userInput = ""
         self.followUpInput = ""
         self.conversation = []
         self.streamingText = ""
         self.lastError = nil
+        self.lastResolution = nil
+    }
+
+    /// When the user picks a different preset in the panel, honor that preset's
+    /// preferred model (if any) — otherwise fall back to whatever was selected
+    /// before, then to the global default.
+    func onPresetChanged() {
+        if let preset = selectedPreset, let modelID = preset.preferredModelID,
+           modelStore.models.contains(where: { $0.id == modelID }) {
+            selectedModelID = modelID
+        }
     }
 
     func send() {
-        guard let model = selectedModel else {
+        guard let preset = selectedPreset else {
+            lastError = "No prompt preset configured."
+            return
+        }
+        guard let model = effectiveModel(for: preset) else {
             lastError = "No model configured. Open Settings to add one."
             return
         }
         let activeBundle = currentBundleForSend()
-        let messages = promptBuilder.buildInitial(
+        let (messages, resolution) = promptBuilder.resolve(
+            preset: preset,
             bundle: activeBundle,
-            mode: mode,
-            customInstruction: customInstruction.isEmpty ? nil : customInstruction
+            userInput: userInput,
+            model: model
         )
         conversation = messages
-        runRequest(model: model)
+        lastResolution = resolution
+        runRequest(model: model, preset: preset)
     }
 
     func sendFollowUp() {
-        guard let model = selectedModel else { return }
         let trimmed = followUpInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard let preset = selectedPreset, let model = effectiveModel(for: preset) else { return }
         if conversation.isEmpty {
-            conversation = promptBuilder.buildInitial(
+            let (messages, resolution) = promptBuilder.resolve(
+                preset: preset,
                 bundle: currentBundleForSend(),
-                mode: mode,
-                customInstruction: customInstruction.isEmpty ? nil : customInstruction
+                userInput: userInput,
+                model: model
             )
+            conversation = messages
+            lastResolution = resolution
         }
         conversation.append(ChatMessage(role: .user, content: trimmed))
         followUpInput = ""
-        runRequest(model: model)
+        runRequest(model: model, preset: preset)
     }
 
     func cancelStreaming() {
         streamTask?.cancel()
         streamTask = nil
         isStreaming = false
+    }
+
+    private func effectiveModel(for preset: PromptPreset?) -> ModelConfig? {
+        if let preset, let id = preset.preferredModelID,
+           let model = modelStore.models.first(where: { $0.id == id }) {
+            return model
+        }
+        if let id = selectedModelID, let m = modelStore.models.first(where: { $0.id == id }) {
+            return m
+        }
+        return modelStore.defaultModel
     }
 
     private func currentBundleForSend() -> ContextBundle {
@@ -103,7 +151,7 @@ final class PanelViewModel: ObservableObject {
         return copy
     }
 
-    private func runRequest(model: ModelConfig) {
+    private func runRequest(model: ModelConfig, preset: PromptPreset) {
         cancelStreaming()
         lastError = nil
         streamingText = ""
@@ -112,8 +160,9 @@ final class PanelViewModel: ObservableObject {
         let request = LLMRequest(
             model: model,
             messages: conversation,
-            temperature: nil,
-            maxTokens: nil,
+            temperature: preset.temperature,
+            maxTokens: preset.maxOutputTokens,
+            reasoningEffort: preset.reasoningEffort,
             stream: settings.streamResponses && model.supportsStreaming
         )
         let provider = registry.provider(for: model)
@@ -137,7 +186,7 @@ final class PanelViewModel: ObservableObject {
                 await MainActor.run {
                     self.conversation.append(ChatMessage(role: .assistant, content: self.streamingText))
                     self.isStreaming = false
-                    self.recordHistory(model: model)
+                    self.recordHistory(model: model, preset: preset)
                 }
             } catch is CancellationError {
                 await MainActor.run { self.isStreaming = false }
@@ -150,15 +199,17 @@ final class PanelViewModel: ObservableObject {
         }
     }
 
-    private func recordHistory(model: ModelConfig) {
+    private func recordHistory(model: ModelConfig, preset: PromptPreset) {
         guard settings.historyEnabled, !streamingText.isEmpty else { return }
+        guard let resolution = lastResolution else { return }
         let item = LocalHistoryItem(
             timestamp: Date(),
             selectedText: effectiveSelectedText,
+            userInput: userInput,
             responseText: streamingText,
-            modelName: model.displayName,
-            mode: mode,
-            appName: bundle.frontmostAppName
+            appName: bundle.frontmostAppName,
+            windowTitle: bundle.frontmostWindowTitle,
+            resolution: resolution
         )
         LocalHistoryStore.shared.append(item)
     }

@@ -61,6 +61,31 @@ open build/Build/Products/Debug/InlineLLMLens.app
 
 The `CODE_SIGNING_ALLOWED=NO` flag lets you build without a development team for local development.
 
+## Iteration loop (terminal-driven)
+
+When iterating quickly on `Capture/`, `Panel/`, `LLM/`, or anything else where you'd rather not click through Xcode's run/stop cycle, use the bundled script:
+
+```bash
+./bin/dev-restart.sh
+```
+
+It does, in order:
+
+1. Regenerates `InlineLLMLens.xcodeproj` if `project.yml` is newer (skipped otherwise).
+2. `killall InlineLLMLens` — terminates any running copy.
+3. `xcodebuild … build` against the macOS Debug configuration with code signing disabled.
+4. `lsregister -f` + `pbs -update` against the freshly built `.app` so Launch Services and the right-click Services menu point at the new bundle.
+5. `open` the rebuilt `.app`, then verifies the process is alive.
+
+If the build fails, the script prints the first 40 lines of compile errors/warnings and exits non-zero. The whole cycle takes a few seconds for incremental rebuilds.
+
+A few things to keep in mind:
+
+- The `lsregister -f` + `pbs -update` step is only needed if you changed `Info.plist`, `project.yml`'s `NSServices` section, or you suspect Launch Services is pointing at a stale bundle. For pure Swift edits you can skip it. (See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md#services-menu-entry-doesnt-appear) for why this matters.)
+- Even after `lsregister -f`, the **consuming app** (TextEdit, Notes, …) still won't see a changed Service entry until *it* is quit and relaunched.
+- Accessibility permission survives rebuilds because it's keyed on the bundle identifier, not the binary path. You don't need to re-grant after each rebuild — only after wiping the app from the Accessibility list.
+- If you change `project.yml`, run `xcodegen generate` first.
+
 ## Run tests
 
 ```bash

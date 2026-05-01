@@ -4,10 +4,55 @@ struct LocalHistoryItem: Codable, Identifiable {
     var id: UUID = UUID()
     var timestamp: Date
     var selectedText: String
+    var userInput: String
     var responseText: String
-    var modelName: String
-    var mode: PromptMode
     var appName: String?
+    var windowTitle: String?
+    /// Snapshot of how the prompt was rendered. Stored verbatim so editing or
+    /// deleting the source preset never rewrites history.
+    var resolution: HistoryResolution
+
+    init(
+        id: UUID = UUID(),
+        timestamp: Date,
+        selectedText: String,
+        userInput: String,
+        responseText: String,
+        appName: String?,
+        windowTitle: String?,
+        resolution: PromptResolution
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.selectedText = selectedText
+        self.userInput = userInput
+        self.responseText = responseText
+        self.appName = appName
+        self.windowTitle = windowTitle
+        self.resolution = HistoryResolution(
+            presetID: resolution.presetID,
+            presetName: resolution.presetName,
+            systemPrompt: resolution.systemPrompt,
+            userMessage: resolution.userMessage,
+            modelID: resolution.modelID,
+            modelDisplayName: resolution.modelDisplayName,
+            temperature: resolution.temperature,
+            maxOutputTokens: resolution.maxOutputTokens,
+            reasoningEffort: resolution.reasoningEffort
+        )
+    }
+}
+
+struct HistoryResolution: Codable {
+    var presetID: UUID?
+    var presetName: String
+    var systemPrompt: String
+    var userMessage: String
+    var modelID: UUID
+    var modelDisplayName: String
+    var temperature: Double?
+    var maxOutputTokens: Int?
+    var reasoningEffort: String?
 }
 
 /// Off by default. When enabled, persists a small JSON list locally.

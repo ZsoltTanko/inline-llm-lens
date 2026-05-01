@@ -114,7 +114,9 @@ final class OpenAICompatibleClient: LLMProvider {
             throw LLMError.missingAPIKey
         }
 
-        let trimmedEffort = request.model.reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let perRequestEffort = request.reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let modelEffort = request.model.reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEffort = (perRequestEffort?.isEmpty == false) ? perRequestEffort : modelEffort
         let body = ChatCompletionBody(
             model: request.model.modelName,
             messages: request.messages.map { .init(role: $0.role.rawValue, content: $0.content) },
