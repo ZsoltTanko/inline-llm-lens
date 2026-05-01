@@ -117,7 +117,8 @@ Full diagrams and module-by-module narrative in [`docs/ARCHITECTURE.md`](docs/AR
 - No telemetry. No analytics. No crash reporting.
 - No backend owned by this app — API calls go directly from the user's machine to their configured provider.
 - API keys live in the macOS login Keychain.
-- No background scraping. The app never reads selected text or pasteboard contents until the user explicitly invokes it.
+- No background scraping. The app never reads selected text or pasteboard contents until the user explicitly invokes it (hotkey or right-click Services).
+- On invocation in apps where Accessibility doesn't expose the selection, the app simulates Cmd+C to capture the highlighted text, then restores the previous pasteboard. This is on by default and can be disabled in **Settings → Capture**.
 - Local history is **off by default**; when enabled, stored as a JSON file on disk only.
 
 See [`mvp_spec.md`](mvp_spec.md) §15 for the full privacy stance.

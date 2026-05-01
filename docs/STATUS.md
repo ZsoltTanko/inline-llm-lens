@@ -10,7 +10,7 @@ What's shipped vs. what's deliberately deferred. Read alongside [`../mvp_spec.md
 | M2 — Manual LLM request (type/paste, send, render, copy) | §21 | ✅ | |
 | M3 — Services / right-click integration | §21 | ✅ | Requires `lsregister` + user opt-in for dev builds; see [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md). |
 | M4 — Hotkey + Accessibility capture | §21 | ✅ | Default Option+Space; bounded BFS over the AX tree. |
-| M5 — Prompt modes + model selector | §21 | ✅ | All seven modes (Explain, Define, Summarize, Rewrite, Translate, Critique, Custom). |
+| M5 — Prompt presets + model selector | §21 | ✅ | The original hard-coded mode enum was replaced with user-defined `PromptPreset`s: editable system prompt with template variables, optional per-preset model / temperature / max-tokens / reasoning-effort overrides, per-preset hotkey, dropdown pinning, JSON import/export. Seeded with one "Explain" preset on first launch. |
 | M6 — Follow-up | §21 | ✅ | In-panel `[ChatMessage]` conversation state; Cmd+Enter to send. |
 | M7 — Polish (streaming, Markdown, clipboard fallback, launch-at-login) | §21 | ✅ | SSE streaming via dedicated tuned URLSession. |
 
@@ -27,15 +27,15 @@ The spec's §20 acceptance criteria are all met to the extent possible without p
 - ✅ Hotkey-driven flow with graceful failure when AX is unavailable.
 - ✅ Right-click Services flow with selected text passed in.
 - ✅ Configurable models, Keychain-stored keys, model picker in panel.
-- ✅ ≥3 modes (we ship 7).
-- ✅ Robustness: missing API key, missing AX, no selection, network errors, no clipboard destruction unless explicitly enabled.
+- ✅ User-defined presets (one seeded on first launch; user owns the catalog from then on).
+- ✅ Robustness: missing API key, missing AX, no selection, network errors. The Cmd+C clipboard fallback is **enabled by default** so highlighted text in Chrome / Cursor / Slack / Electron is captured out of the box; the previous pasteboard contents are saved and restored. Users can disable it in Settings → Capture.
 - ✅ Privacy: no telemetry, no background capture, no cloud backend, selection only sent on explicit invocation.
 
 ## Known limitations
 
 These are user-facing limitations baked into the MVP shape, not bugs:
 
-- **Browser web content, Terminal, Electron apps don't expose AX text** — hotkey path returns empty for them. Workarounds: use right-click Services or enable clipboard fallback. Per spec §22.2/22.5, dedicated browser extensions and per-app adapters are post-MVP.
+- **Browser web content, Terminal, Electron apps don't expose AX text** — the AX path returns nothing for them. Mitigated by the Cmd+C clipboard fallback (on by default); right-click Services also works. Per spec §22.2/22.5, dedicated browser extensions and per-app adapters are still post-MVP.
 - **`Settings…` briefly shows a Dock icon** while open — required by SwiftUI's `Settings { }` scene under `LSUIElement`. Acceptable per spec UX bar; not worth the engineering cost to fix in MVP.
 - **No history UI** — `LocalHistoryStore` is scaffolded and feature-flagged off by default (spec §15 recommendation). When enabled, history is written to `~/Library/Application Support/InlineLLMLens/history.json`. There's no in-app browser for it yet (spec §22.8).
 - **First request after long idle pays TLS setup cost** (~1–2s for OpenAI). Subsequent requests reuse the connection.
@@ -61,6 +61,6 @@ If you're new and looking for a high-value first PR:
 2. **Improve the AX BFS** — currently bounded at depth 6. Some apps put text-bearing elements deeper or behind `kAXVisibleChildrenAttribute`. Pick a real-world app it fails in and fix it.
 3. **Pre-seed model templates** — first-launch onboarding could offer one-click templates for OpenAI / OpenRouter / Ollama instead of an empty Models tab.
 4. **Add a "thinking… 12s" elapsed timer** to the panel while waiting for first delta from reasoning models.
-5. **Add a clipboard-fallback toggle to the panel header** so users can opt in per-invocation rather than globally.
+5. **History browser UI** — entries already snapshot the resolved system prompt + user message + model + inference params; just no view to read them yet.
 
 Anything bigger than these — read the spec's §22 (later functionality) and align with the spec owner first.

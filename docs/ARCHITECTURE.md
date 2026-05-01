@@ -71,8 +71,9 @@ flowchart TD
 **Capture.** `SelectionCaptureService.captureForHotkey()` runs strategies in priority order and tags the resulting `ContextBundle` with the method that produced it:
 
 1. `.accessibility` — `AXUIElementCopyAttributeValue(focusedElement, kAXSelectedTextAttribute)`, with a bounded BFS through children if the focused element doesn't directly expose selected text. Many apps put the focused element on a container (window, scroll view) and the actual text-bearing element is a descendant.
-2. `.clipboardFallback` — only if the user opted in (Settings → Capture). Saves the current pasteboard, simulates Cmd+C via `CGEvent`, reads the result, restores the pasteboard.
-3. `.manualInput` — empty bundle with no selection. The panel opens with a text field for the user to type/paste into.
+2. `.clipboardFallback` — Cmd+C simulation. **On by default.** Saves the current pasteboard, simulates Cmd+C via `CGEvent`, reads the result, restores the pasteboard. The only path that captures *highlighted* text in apps where AX returns nothing (Chrome, Cursor, Slack, most Electron). Runs *before* `.clipboardCurrent` so an active selection wins over whatever stale text happens to be on the clipboard.
+3. `.clipboardCurrent` — read `NSPasteboard.general` as-is, no mutation. Picks up the case "I just copied something and want to ask about it" without requiring a selection.
+4. `.manualInput` — empty bundle with no selection. The panel opens with a text field for the user to type/paste into.
 
 The Services entry point (`.servicesInput`) bypasses this orchestration entirely — macOS hands the selected text directly to `ServicesHandler` via the system pasteboard, which is the most reliable capture method.
 
@@ -126,10 +127,13 @@ There's one wrinkle: SwiftUI's `Settings { }` scene only presents reliably under
 
 1. Switch to `.regular`.
 2. `NSApp.activate(ignoringOtherApps: true)`.
-3. Send `showSettingsWindow:` action.
-4. Subscribe to `NSWindow.willCloseNotification` for the Settings window; switch back to `.accessory` when it closes.
+3. Close the floating panel (it sits at `.floating` and would occlude Settings).
+4. After a 100 ms delay (lets the policy switch + status-menu dismissal settle), send the `showSettingsWindow:` action.
+5. Subscribe to `NSWindow.willCloseNotification`; revert to `.accessory` when no Settings-like window remains visible.
 
 This makes the Dock icon appear briefly while Settings is open, then vanish. Don't use a global `applicationDidResignActive` handler to revert the policy — that races with window presentation and can silently kill the Settings window. (We tried; see [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md).)
+
+**Floating panel activation.** When invoked via the global hotkey, the panel is presented with `NSApp.activate(ignoringOtherApps: true)` followed by `panel.makeKeyAndOrderFront(nil)` so it grabs keyboard focus immediately — Esc closes, Cmd+, opens Settings, etc. We deliberately do **not** use `.nonactivatingPanel` in the panel's style mask: that flag tells AppKit "don't activate the owning app when this panel becomes key", which cancels the activate call and leaves keyboard input routed elsewhere. Note: under `.accessory` policy the macOS top menu bar still belongs to whatever app was previously frontmost — accessory apps do not get a menu bar. That's why the panel itself surfaces a gear (⌘,) for Settings and the status-bar icon menu carries the rest of the app commands.
 
 ## Storage layout
 
@@ -139,9 +143,12 @@ Persisted state lives in three places:
 | --- | --- | --- |
 | User preferences | `UserDefaults.standard` (keys under `settings.*`) | Native types |
 | Configured models | `~/Library/Application Support/InlineLLMLens/models.json` | JSON, `[ModelConfig]` |
+| Prompt presets | `~/Library/Application Support/InlineLLMLens/prompts.json` | JSON, `[PromptPreset]` |
 | API keys | macOS login Keychain, service `com.inlinellmlens`, account `<ModelConfig.id.uuidString>` | Generic password (`kSecClassGenericPassword`) |
-| Local history (opt-in) | `~/Library/Application Support/InlineLLMLens/history.json` | JSON, `[LocalHistoryItem]` |
+| Local history (opt-in) | `~/Library/Application Support/InlineLLMLens/history.json` | JSON, `[LocalHistoryItem]` (each carries a `PromptResolution` snapshot) |
 | Default model id | `UserDefaults` key `InlineLLMLens.defaultModelID` | UUID string |
+| Default preset id | `UserDefaults` key `InlineLLMLens.defaultPresetID` | UUID string |
+| Per-preset hotkeys | `UserDefaults` keys `KeyboardShortcuts.<prompt.preset.<uuid>>` | Managed by the KeyboardShortcuts SPM package |
 
 `ModelStore` and `KeychainStore` both accept injectable `UserDefaults` / service identifiers in their initializers so tests can isolate from system state.
 

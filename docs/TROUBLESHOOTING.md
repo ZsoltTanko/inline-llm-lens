@@ -142,19 +142,29 @@ Look at `InlineLLMLens/App/AppDelegate.swift`. The pattern is:
 static func openSettings() {
     NSApp.setActivationPolicy(.regular)
     NSApp.activate(ignoringOtherApps: true)
-    DispatchQueue.main.async {
+
+    // The floating panel sits at .floating and would occlude Settings.
+    shared.panelController.close()
+
+    // Delay so the policy switch + status-menu dismissal can settle before
+    // dispatching the action — otherwise Settings can fail to present.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
         shared.observeSettingsCloseOnce()
     }
 }
 
 private func observeSettingsCloseOnce() {
-    // Subscribe to NSWindow.willCloseNotification, identify the Settings window,
-    // and switch policy back to .accessory when it closes.
+    // Subscribe to NSWindow.willCloseNotification. Match the Settings window
+    // by autosave name / title, fall back to "any non-FloatingPanel window
+    // closing", then re-check `NSApp.windows` for any remaining Settings-like
+    // window. Revert to .accessory only when none remain.
 }
 ```
 
 **Do not** revert the activation policy in `applicationDidResignActive`. We tried — it races with window presentation and silently kills the Settings window before it can show. Use the explicit `willCloseNotification` observer instead.
+
+**Do not** leave the floating panel up while opening Settings. Its `.floating` window level occludes the Settings window, which makes it look like Settings "didn't open" (it did, you just can't see it).
 
 ---
 
