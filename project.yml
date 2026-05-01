@@ -1,0 +1,73 @@
+name: InlineLLMLens
+options:
+  bundleIdPrefix: com.inlinellmlens
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: "2.2.0"
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: "2.4.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  InlineLLMLens:
+    type: application
+    platform: macOS
+    sources:
+      - path: InlineLLMLens
+    info:
+      path: InlineLLMLens/App/Info.plist
+      properties:
+        LSUIElement: true
+        CFBundleName: Inline LLM Lens
+        CFBundleDisplayName: Inline LLM Lens
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NSHumanReadableCopyright: ""
+        NSAccessibilityUsageDescription: "Inline LLM Lens reads selected text from the focused app to send to your configured LLM."
+        NSServices:
+          - NSMenuItem:
+              default: Ask Inline LLM
+            NSMessage: askInlineLLM
+            NSPortName: InlineLLMLens
+            NSSendTypes:
+              - NSStringPboardType
+              - public.utf8-plain-text
+    entitlements:
+      path: InlineLLMLens/App/InlineLLMLens.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.inlinellmlens.app
+        GENERATE_INFOPLIST_FILE: NO
+        COMBINE_HIDPI_IMAGES: YES
+    dependencies:
+      - package: KeyboardShortcuts
+      - package: MarkdownUI
+        product: MarkdownUI
+
+  InlineLLMLensTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: InlineLLMLensTests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.inlinellmlens.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: InlineLLMLens
