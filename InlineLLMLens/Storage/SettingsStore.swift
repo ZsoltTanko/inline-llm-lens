@@ -18,6 +18,27 @@ final class SettingsStore: ObservableObject {
         static let showMenuBarIcon = "settings.showMenuBarIcon"
         static let panelFontSize = "settings.panelFontSize"
         static let panelClickOffBehavior = "settings.panelClickOffBehavior"
+        static let panelPlacement = "settings.panelPlacement"
+    }
+
+    /// Where the floating panel appears on invocation.
+    enum PanelPlacement: String, CaseIterable, Identifiable {
+        /// Anchored just below+right of the mouse cursor (current default).
+        case nearMouse
+        /// Centered on the mouse cursor.
+        case centeredOnCursor
+        /// Centered on the active screen.
+        case centeredOnScreen
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .nearMouse:         return "Near cursor (default)"
+            case .centeredOnCursor:  return "Centered on cursor"
+            case .centeredOnScreen:  return "Centered on screen"
+            }
+        }
     }
 
     /// How the floating panel reacts when the user clicks outside it.
@@ -61,7 +82,8 @@ final class SettingsStore: ObservableObject {
             Keys.hasCompletedOnboarding: false,
             Keys.showMenuBarIcon: true,
             Keys.panelFontSize: SettingsStore.defaultPanelFontSize,
-            Keys.panelClickOffBehavior: PanelClickOffBehavior.stayOnTop.rawValue
+            Keys.panelClickOffBehavior: PanelClickOffBehavior.stayOnTop.rawValue,
+            Keys.panelPlacement: PanelPlacement.nearMouse.rawValue
         ])
     }
 
@@ -117,6 +139,17 @@ final class SettingsStore: ObservableObject {
             return v == 0 ? SettingsStore.defaultPanelFontSize : v
         }
         set { defaults.set(newValue, forKey: Keys.panelFontSize); objectWillChange.send() }
+    }
+
+    var panelPlacement: PanelPlacement {
+        get {
+            let raw = defaults.string(forKey: Keys.panelPlacement) ?? ""
+            return PanelPlacement(rawValue: raw) ?? .nearMouse
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.panelPlacement)
+            objectWillChange.send()
+        }
     }
 
     var panelClickOffBehavior: PanelClickOffBehavior {

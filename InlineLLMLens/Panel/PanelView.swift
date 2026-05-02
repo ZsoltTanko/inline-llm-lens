@@ -229,7 +229,6 @@ struct PanelView: View {
                     }
                     .buttonStyle(.plain)
                     .help("Copy response (⌘C)")
-                    .keyboardShortcut("c", modifiers: [.command])
                     .onHover { copyHover = $0 }
                 }
             }

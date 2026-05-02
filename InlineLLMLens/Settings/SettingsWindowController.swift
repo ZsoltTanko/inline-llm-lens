@@ -25,7 +25,7 @@ final class SettingsWindowController {
         }
 
         let host = NSHostingController(rootView: SettingsRoot())
-        let win = NSWindow(contentViewController: host)
+        let win = SettingsWindow(contentViewController: host)
         win.title = "Inline LLM Lens Settings"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         win.setContentSize(NSSize(width: 720, height: 520))
@@ -50,6 +50,15 @@ final class SettingsWindowController {
 
     var isVisible: Bool {
         window?.isVisible ?? false
+    }
+}
+
+/// `NSWindow` subclass that closes on Esc. Handled at the window level
+/// (via `cancelOperation(_:)`) so Esc works regardless of which SwiftUI
+/// control inside the Settings tabs is focused.
+private final class SettingsWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) {
+        performClose(nil)
     }
 }
 

@@ -14,6 +14,12 @@ final class FloatingPanel: NSPanel {
     /// otherwise Esc only fires when a `TextField` is first responder.
     var onCancel: (() -> Void)?
 
+    /// Invoked for ⌘C when nothing in the responder chain handles `copy:`
+    /// natively (i.e. there's no active text selection). Lets us fall back
+    /// to "copy the full response" while still letting a live text
+    /// selection inside the Markdown view win the shortcut.
+    var onCopyFallback: (() -> Void)?
+
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -44,5 +50,22 @@ final class FloatingPanel: NSPanel {
     /// nothing, produces the "not valid" system beep.
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
+    }
+
+    /// Intercept ⌘C. First try to dispatch `copy:` down the responder
+    /// chain so a live text selection (e.g. inside the Markdown view)
+    /// copies just the selected text. Only if nothing handles `copy:` do
+    /// we fall back to copying the entire response.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.type == .keyDown,
+           event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers == "c" {
+            if NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self) {
+                return true
+            }
+            onCopyFallback?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }

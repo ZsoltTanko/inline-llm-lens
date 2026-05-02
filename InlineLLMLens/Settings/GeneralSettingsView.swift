@@ -9,6 +9,7 @@ struct GeneralSettingsView: View {
     @AppStorage(SettingsStore.Keys.launchAtLogin) private var launchAtLogin: Bool = false
     @AppStorage(SettingsStore.Keys.panelFontSize) private var panelFontSize: Double = SettingsStore.defaultPanelFontSize
     @AppStorage(SettingsStore.Keys.panelClickOffBehavior) private var clickOffBehaviorRaw: String = SettingsStore.PanelClickOffBehavior.stayOnTop.rawValue
+    @AppStorage(SettingsStore.Keys.panelPlacement) private var panelPlacementRaw: String = SettingsStore.PanelPlacement.nearMouse.rawValue
 
     var body: some View {
         Form {
@@ -43,6 +44,19 @@ struct GeneralSettingsView: View {
             }
 
             Section("Window behaviour") {
+                Picker("Panel placement on invocation", selection: Binding(
+                    get: {
+                        SettingsStore.PanelPlacement(rawValue: panelPlacementRaw) ?? .nearMouse
+                    },
+                    set: { newValue in
+                        panelPlacementRaw = newValue.rawValue
+                    }
+                )) {
+                    ForEach(SettingsStore.PanelPlacement.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+
                 Picker("When clicking outside the panel", selection: Binding(
                     get: {
                         SettingsStore.PanelClickOffBehavior(rawValue: clickOffBehaviorRaw) ?? .stayOnTop

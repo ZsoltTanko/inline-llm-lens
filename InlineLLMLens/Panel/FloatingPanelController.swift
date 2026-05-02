@@ -40,6 +40,17 @@ final class FloatingPanelController {
             }
         }
 
+        // ⌘C with no active text selection → copy the full response.
+        // See `FloatingPanel.performKeyEquivalent(with:)`.
+        panel.onCopyFallback = { [weak self] in
+            guard let self else { return }
+            let text = self.viewModel.streamingText
+            guard !text.isEmpty else { return }
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(text, forType: .string)
+        }
+
         resignKeyObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didResignKeyNotification,
             object: panel,
@@ -92,7 +103,7 @@ final class FloatingPanelController {
     /// own `autoSend` flag wins.
     func present(with bundle: ContextBundle, preset: PromptPreset?, autoSendOverride: Bool? = nil) {
         viewModel.reset(with: bundle, presetOverride: preset)
-        PanelPositioner.position(panel: panel)
+        PanelPositioner.position(panel: panel, placement: settings.panelPlacement)
         applyCurrentLevel()
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
