@@ -24,13 +24,17 @@ enum AccessibilityCapture {
 
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
 
-        if let focused = copyAttribute(axApp, kAXFocusedUIElementAttribute) {
-            if let text = readSelectedText(focused as! AXUIElement) { return text }
-            if let text = walkForSelectedText(focused as! AXUIElement, depth: 0, maxDepth: 6) { return text }
+        if let focused = copyAttribute(axApp, kAXFocusedUIElementAttribute),
+           CFGetTypeID(focused) == AXUIElementGetTypeID() {
+            let element = focused as! AXUIElement // safe: type-checked above
+            if let text = readSelectedText(element) { return text }
+            if let text = walkForSelectedText(element, depth: 0, maxDepth: 6) { return text }
         }
 
-        if let window = copyAttribute(axApp, kAXFocusedWindowAttribute) {
-            if let text = walkForSelectedText(window as! AXUIElement, depth: 0, maxDepth: 6) { return text }
+        if let window = copyAttribute(axApp, kAXFocusedWindowAttribute),
+           CFGetTypeID(window) == AXUIElementGetTypeID() {
+            let element = window as! AXUIElement // safe: type-checked above
+            if let text = walkForSelectedText(element, depth: 0, maxDepth: 6) { return text }
         }
 
         return nil
@@ -64,7 +68,9 @@ enum AccessibilityCapture {
     static func frontmostWindowTitle() -> String? {
         guard isTrusted, let app = NSWorkspace.shared.frontmostApplication else { return nil }
         let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        guard let window = copyAttribute(axApp, kAXFocusedWindowAttribute) else { return nil }
-        return copyAttribute(window as! AXUIElement, kAXTitleAttribute) as? String
+        guard let window = copyAttribute(axApp, kAXFocusedWindowAttribute),
+              CFGetTypeID(window) == AXUIElementGetTypeID() else { return nil }
+        let element = window as! AXUIElement // safe: type-checked above
+        return copyAttribute(element, kAXTitleAttribute) as? String
     }
 }

@@ -35,8 +35,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
 
         rebuildMenuBar()
-        // Rebuild the menu bar's "Prompt presets" submenu whenever the catalog changes.
+        // Rebuild the menu bar's "Prompt presets" submenu whenever the catalog
+        // changes. `.dropFirst()` skips the synchronous current-value emission
+        // that `@Published` delivers on subscription — we already call
+        // `rebuildMenuBar()` + `registerPerPresetHotkeys()` explicitly below,
+        // and double-registration of hotkey handlers (KeyboardShortcuts
+        // *appends* rather than replaces) is exactly what caused the preset
+        // hotkey to fire multiple times and appear to crash the app.
         presetCancellable = presetStore.$presets
+            .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 self?.rebuildMenuBar()

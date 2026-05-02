@@ -33,10 +33,12 @@ final class PromptPresetStore: ObservableObject {
             defaultPresetID = id
         }
         if presets.isEmpty && seedIfEmpty {
-            let seed = PromptPreset.seed
-            presets = [seed]
-            defaultPresetID = seed.id
-            defaults.set(seed.id.uuidString, forKey: defaultsKey)
+            let seeds = PromptPreset.factorySeeds
+            presets = seeds
+            if let first = seeds.first {
+                defaultPresetID = first.id
+                defaults.set(first.id.uuidString, forKey: defaultsKey)
+            }
             save()
         }
         if defaultPresetID == nil {

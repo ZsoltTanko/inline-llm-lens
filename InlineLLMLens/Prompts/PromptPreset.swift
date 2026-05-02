@@ -71,16 +71,39 @@ extension PromptPreset {
     /// rename.
     var hotkeyShortcutKey: String { "prompt.preset.\(id.uuidString)" }
 
-    /// Seed preset created on first launch when the prompts file is missing or
-    /// empty. The user is free to rename, edit, or delete it.
-    static let seed = PromptPreset(
-        name: "Explain",
-        systemPrompt: """
-        You are a concise, high-precision assistant embedded in a macOS text-selection utility. The user has selected text from another app and wants help without context switching.
+    /// Shared copy for the "concise assistant" framing used by both factory
+    /// seeds. Kept as a single source of truth so edits stay consistent.
+    fileprivate static let seedBaseSystemPrompt = """
+    You are a concise, high-precision assistant embedded in a macOS text-selection utility. The user has selected text from another app and wants help without context switching. Explain the selected text. Be concise but not shallow. If it is technical, include the key mechanism or distinction. You always respond in English, translating any provided text first. If the selection is ambiguous, give the most likely interpretation. Don’t mention uncertainty or hedge - your best guess suffices. Don’t suggest follow-up clarifications or discussion since the user can only see your first message, not respond further.
+    """
 
-        Explain the selected text. Be concise but not shallow. If it is technical, include the key mechanism or distinction. If the selection is ambiguous, give the most likely interpretation and mention uncertainty briefly.
-        """,
-        autoSend: true,
-        sortOrder: 0
-    )
+    /// Presets installed on first launch when the prompts file is missing
+    /// or empty. The user is free to rename, edit, or delete any of them;
+    /// they are only (re)seeded when the catalog is completely empty.
+    static var factorySeeds: [PromptPreset] {
+        [
+            PromptPreset(
+                name: "Explain",
+                systemPrompt: seedBaseSystemPrompt,
+                requiresUserInput: false,
+                requiresSelection: false,
+                autoSend: true,
+                pinnedInDropdown: true,
+                sortOrder: 0
+            ),
+            PromptPreset(
+                name: "Ask",
+                systemPrompt: seedBaseSystemPrompt + "\n\nThe user has provided the following additional instruction or question: {{userInput}}",
+                requiresUserInput: true,
+                requiresSelection: false,
+                autoSend: true,
+                pinnedInDropdown: true,
+                sortOrder: 1
+            )
+        ]
+    }
+
+    /// Back-compat accessor for tests / callers that want "the default
+    /// starter preset". Always returns the first factory seed ("Explain").
+    static var seed: PromptPreset { factorySeeds[0] }
 }
