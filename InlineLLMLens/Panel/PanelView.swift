@@ -18,7 +18,13 @@ struct PanelView: View {
 
     @State private var selectionExpanded: Bool = false
     @FocusState private var followUpFocused: Bool
-    @FocusState private var userInputFocused: Bool
+    /// Focus for the empty-state "Type or paste text…" field (manual
+    /// selection entry).
+    @FocusState private var manualSelectionFocused: Bool
+    /// Focus for the preset's user-input field (the one shown when the
+    /// active preset has `requiresUserInput == true`). Distinct from
+    /// `manualSelectionFocused` since both can coexist on screen.
+    @FocusState private var presetInputFocused: Bool
     @State private var copyHover: Bool = false
 
     private var fontSize: CGFloat { CGFloat(settings.panelFontSize) }
@@ -48,6 +54,13 @@ struct PanelView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .modifier(ForegroundColorModifier(tintColor: appearance.foregroundColor))
         .modifier(ColorSchemeOverrideModifier(scheme: appearance.forcedColorScheme))
+        // Auto-focus the preset user-input field on each invocation when
+        // the active preset requires it, so Opt+Space + start typing
+        // works without clicking.
+        .onAppear { focusPresetInputIfNeeded() }
+        .onChange(of: viewModel.invocationToken) { _, _ in
+            focusPresetInputIfNeeded()
+        }
         // Fallback for when a SwiftUI `TextField` is first responder.
         // The primary Esc handler lives on `FloatingPanel.cancelOperation`
         // so it works even when no SwiftUI view is focused.
@@ -171,7 +184,7 @@ struct PanelView: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 12))
                     .lineLimit(1...4)
-                    .focused($userInputFocused)
+                    .focused($manualSelectionFocused)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -193,6 +206,19 @@ struct PanelView: View {
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(1...3)
                         .font(.system(size: fontSize))
+                        .focused($presetInputFocused)
+                        // Enter sends, Shift+Enter inserts a newline (the
+                        // default behaviour for a vertical-axis TextField).
+                        .onKeyPress(.return) {
+                            if NSEvent.modifierFlags.contains(.shift) {
+                                return .ignored
+                            }
+                            if viewModel.canSend, !viewModel.isStreaming {
+                                viewModel.send()
+                                return .handled
+                            }
+                            return .ignored
+                        }
                     }
 
                     if viewModel.streamingText.isEmpty {
@@ -376,6 +402,13 @@ struct PanelView: View {
             return "No selection — Accessibility access not granted."
         }
         return "No selection captured."
+    }
+
+    private func focusPresetInputIfNeeded() {
+        guard let preset = viewModel.selectedPreset, preset.requiresUserInput else { return }
+        // Defer one runloop tick so the TextField is mounted and ready to
+        // accept focus when the panel is first shown for a new invocation.
+        DispatchQueue.main.async { presetInputFocused = true }
     }
 
     private func copyResponse() {

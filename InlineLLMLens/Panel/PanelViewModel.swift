@@ -84,6 +84,7 @@ final class PanelViewModel: ObservableObject {
         self.streamingText = ""
         self.lastError = nil
         self.lastResolution = nil
+        self.invocationToken = UUID()
     }
 
     /// When the user picks a different preset in the panel, honor that preset's
