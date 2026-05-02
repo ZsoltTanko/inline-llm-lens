@@ -1,13 +1,17 @@
 import AppKit
 
-/// `NSPanel` subclass that becomes key on presentation so the user can type
-/// and use Esc immediately. It activates the owning app so the macOS menu
-/// bar reflects Inline LLM Lens while the panel is frontmost.
+/// Borderless `NSPanel` styled as a slim, chromeless floating surface.
+///
+/// We deliberately drop `.titled` (and therefore the macOS traffic-light
+/// buttons) — every vertical pixel matters in the panel and the title row
+/// added nothing useful. The panel is still draggable by background and
+/// resizable by edge, becomes key for typing/Esc, and renders its own
+/// rounded ultra-thin-material chrome from SwiftUI.
 final class FloatingPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView, .utilityWindow],
+            styleMask: [.borderless, .resizable, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -16,11 +20,14 @@ final class FloatingPanel: NSPanel {
         becomesKeyOnlyIfNeeded = false
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        titleVisibility = .hidden
-        titlebarAppearsTransparent = true
         isMovableByWindowBackground = true
         isReleasedWhenClosed = false
         animationBehavior = .utilityWindow
+
+        // Transparent window so the SwiftUI rounded background shows through.
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
     }
 
     override var canBecomeKey: Bool { true }

@@ -16,7 +16,14 @@ final class SettingsStore: ObservableObject {
         static let launchAtLogin = "settings.launchAtLogin"
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
         static let showMenuBarIcon = "settings.showMenuBarIcon"
+        static let panelFontSize = "settings.panelFontSize"
     }
+
+    /// Default body font size for the response area. Tuned for power-user
+    /// glanceability — small enough to fit a paragraph at a glance, large
+    /// enough to stay readable. User-overridable in Settings → General.
+    static let defaultPanelFontSize: Double = 13
+    static let panelFontSizeRange: ClosedRange<Double> = 11...18
 
     private let defaults: UserDefaults
 
@@ -30,7 +37,8 @@ final class SettingsStore: ObservableObject {
             Keys.historyEnabled: false,
             Keys.launchAtLogin: false,
             Keys.hasCompletedOnboarding: false,
-            Keys.showMenuBarIcon: true
+            Keys.showMenuBarIcon: true,
+            Keys.panelFontSize: SettingsStore.defaultPanelFontSize
         ])
     }
 
@@ -78,5 +86,13 @@ final class SettingsStore: ObservableObject {
     var showMenuBarIcon: Bool {
         get { defaults.bool(forKey: Keys.showMenuBarIcon) }
         set { defaults.set(newValue, forKey: Keys.showMenuBarIcon); objectWillChange.send() }
+    }
+
+    var panelFontSize: Double {
+        get {
+            let v = defaults.double(forKey: Keys.panelFontSize)
+            return v == 0 ? SettingsStore.defaultPanelFontSize : v
+        }
+        set { defaults.set(newValue, forKey: Keys.panelFontSize); objectWillChange.send() }
     }
 }

@@ -7,6 +7,7 @@ struct GeneralSettingsView: View {
     @AppStorage(SettingsStore.Keys.streamResponses) private var streamResponses: Bool = true
     @AppStorage(SettingsStore.Keys.historyEnabled) private var historyEnabled: Bool = false
     @AppStorage(SettingsStore.Keys.launchAtLogin) private var launchAtLogin: Bool = false
+    @AppStorage(SettingsStore.Keys.panelFontSize) private var panelFontSize: Double = SettingsStore.defaultPanelFontSize
 
     var body: some View {
         Form {
@@ -20,6 +21,24 @@ struct GeneralSettingsView: View {
 
             Section("Response") {
                 Toggle("Stream responses", isOn: $streamResponses)
+            }
+
+            Section("Appearance") {
+                HStack {
+                    Text("Panel font size")
+                    Slider(
+                        value: $panelFontSize,
+                        in: SettingsStore.panelFontSizeRange,
+                        step: 1
+                    )
+                    Text("\(Int(panelFontSize)) pt")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                }
+                Text("Default \(Int(SettingsStore.defaultPanelFontSize)) pt. Affects the response text in the floating panel.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("History") {
