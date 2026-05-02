@@ -8,6 +8,12 @@ import AppKit
 /// resizable by edge, becomes key for typing/Esc, and renders its own
 /// rounded ultra-thin-material chrome from SwiftUI.
 final class FloatingPanel: NSPanel {
+    /// Invoked when the panel receives `cancelOperation(_:)` (Esc, via the
+    /// responder chain). Handled at the `NSPanel` level so Esc works
+    /// regardless of which SwiftUI view inside the hosting view is focused —
+    /// otherwise Esc only fires when a `TextField` is first responder.
+    var onCancel: (() -> Void)?
+
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -32,4 +38,11 @@ final class FloatingPanel: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// Esc key. We intentionally don't call `super` — the default
+    /// implementation walks further up the responder chain and, finding
+    /// nothing, produces the "not valid" system beep.
+    override func cancelOperation(_ sender: Any?) {
+        onCancel?()
+    }
 }

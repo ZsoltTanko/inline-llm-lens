@@ -9,6 +9,10 @@ final class PanelViewModel: ObservableObject {
     @Published var selectedModelID: UUID?
     @Published var userInput: String = ""
     @Published var followUpInput: String = ""
+    /// Whether the follow-up bar is visible. Lifted out of `PanelView`'s
+    /// local `@State` so panel-level Esc handling (in `FloatingPanel`) can
+    /// collapse the follow-up bar before closing the panel.
+    @Published var isFollowUpOpen: Bool = false
 
     @Published private(set) var conversation: [ChatMessage] = []
     @Published private(set) var streamingText: String = ""
@@ -71,6 +75,7 @@ final class PanelViewModel: ObservableObject {
         self.selectedModelID = effectiveModel(for: preset)?.id
         self.userInput = ""
         self.followUpInput = ""
+        self.isFollowUpOpen = false
         self.conversation = []
         self.streamingText = ""
         self.lastError = nil
@@ -125,6 +130,11 @@ final class PanelViewModel: ObservableObject {
         conversation.append(ChatMessage(role: .user, content: trimmed))
         followUpInput = ""
         runRequest(model: model, preset: preset)
+    }
+
+    func closeFollowUp() {
+        isFollowUpOpen = false
+        followUpInput = ""
     }
 
     func cancelStreaming() {

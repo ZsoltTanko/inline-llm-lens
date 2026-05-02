@@ -17,6 +17,28 @@ final class SettingsStore: ObservableObject {
         static let hasCompletedOnboarding = "settings.hasCompletedOnboarding"
         static let showMenuBarIcon = "settings.showMenuBarIcon"
         static let panelFontSize = "settings.panelFontSize"
+        static let panelClickOffBehavior = "settings.panelClickOffBehavior"
+    }
+
+    /// How the floating panel reacts when the user clicks outside it.
+    enum PanelClickOffBehavior: String, CaseIterable, Identifiable {
+        /// Panel remains `.floating` above other windows until explicitly dismissed.
+        case stayOnTop
+        /// Panel drops to `.normal` window level and recedes behind the newly
+        /// active app, matching typical Mac window behaviour.
+        case sendToBack
+        /// Panel dismisses itself on click-off.
+        case closePanel
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .stayOnTop:  return "Stay on top"
+            case .sendToBack: return "Recede to background"
+            case .closePanel: return "Close"
+            }
+        }
     }
 
     /// Default body font size for the response area. Tuned for power-user
@@ -38,7 +60,8 @@ final class SettingsStore: ObservableObject {
             Keys.launchAtLogin: false,
             Keys.hasCompletedOnboarding: false,
             Keys.showMenuBarIcon: true,
-            Keys.panelFontSize: SettingsStore.defaultPanelFontSize
+            Keys.panelFontSize: SettingsStore.defaultPanelFontSize,
+            Keys.panelClickOffBehavior: PanelClickOffBehavior.stayOnTop.rawValue
         ])
     }
 
@@ -94,5 +117,16 @@ final class SettingsStore: ObservableObject {
             return v == 0 ? SettingsStore.defaultPanelFontSize : v
         }
         set { defaults.set(newValue, forKey: Keys.panelFontSize); objectWillChange.send() }
+    }
+
+    var panelClickOffBehavior: PanelClickOffBehavior {
+        get {
+            let raw = defaults.string(forKey: Keys.panelClickOffBehavior) ?? ""
+            return PanelClickOffBehavior(rawValue: raw) ?? .stayOnTop
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.panelClickOffBehavior)
+            objectWillChange.send()
+        }
     }
 }

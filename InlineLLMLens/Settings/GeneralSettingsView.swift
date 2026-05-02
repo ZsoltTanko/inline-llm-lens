@@ -8,6 +8,7 @@ struct GeneralSettingsView: View {
     @AppStorage(SettingsStore.Keys.historyEnabled) private var historyEnabled: Bool = false
     @AppStorage(SettingsStore.Keys.launchAtLogin) private var launchAtLogin: Bool = false
     @AppStorage(SettingsStore.Keys.panelFontSize) private var panelFontSize: Double = SettingsStore.defaultPanelFontSize
+    @AppStorage(SettingsStore.Keys.panelClickOffBehavior) private var clickOffBehaviorRaw: String = SettingsStore.PanelClickOffBehavior.stayOnTop.rawValue
 
     var body: some View {
         Form {
@@ -37,6 +38,24 @@ struct GeneralSettingsView: View {
                         .frame(width: 44, alignment: .trailing)
                 }
                 Text("Default \(Int(SettingsStore.defaultPanelFontSize)) pt. Affects the response text in the floating panel.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Window behaviour") {
+                Picker("When clicking outside the panel", selection: Binding(
+                    get: {
+                        SettingsStore.PanelClickOffBehavior(rawValue: clickOffBehaviorRaw) ?? .stayOnTop
+                    },
+                    set: { newValue in
+                        clickOffBehaviorRaw = newValue.rawValue
+                    }
+                )) {
+                    ForEach(SettingsStore.PanelClickOffBehavior.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                Text("Stay on top keeps the panel above other windows until you press Esc or close it. Recede to background behaves like a normal Mac window. Close dismisses the panel on click-off.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -106,25 +106,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsCloseObserver: NSObjectProtocol?
 
     static func openSettings() {
-        // SwiftUI's `Settings { }` scene only presents reliably under .regular
-        // activation policy, so we briefly switch out of menu-bar-only mode.
+        // A menu-bar-only (`.accessory`) app can still present a window, but
+        // switching to `.regular` while Settings is open gives the user a
+        // Dock icon / Cmd-Tab entry, which is the expected Mac feel for a
+        // focused preferences window.
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
 
-        // The floating panel sits at .floating level and would occlude the
-        // Settings window. Hide it so Settings is actually visible.
-        shared.panelController.close()
-
-        // Delay so the policy switch + status-menu dismissal can settle before
-        // we dispatch the action; otherwise Settings can fail to present.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if #available(macOS 14.0, *) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            } else {
-                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-            }
-            shared.observeSettingsCloseOnce()
-        }
+        // Do NOT close the floating panel. Settings is a sibling window; the
+        // click-off observer in `FloatingPanelController` knows to ignore
+        // resignKey when another of our windows becomes key.
+        SettingsWindowController.shared.show()
+        shared.observeSettingsCloseOnce()
     }
 
     private func observeSettingsCloseOnce() {
@@ -135,19 +128,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] note in
             guard let window = note.object as? NSWindow else { return }
-            let titleLooksLikeSettings = window.frameAutosaveName.contains("Settings")
-                || window.title.localizedCaseInsensitiveContains("settings")
-                || window.identifier?.rawValue.contains("Settings") == true
-            let isOurFloatingPanel = window is FloatingPanel
-            guard titleLooksLikeSettings || !isOurFloatingPanel else { return }
+            guard SettingsWindowController.shared.isSettingsWindow(window) else { return }
+            // `willClose` fires before the window is actually hidden, so
+            // defer the visibility check one runloop tick.
             DispatchQueue.main.async {
-                let stillHasVisibleSettings = NSApp.windows.contains { w in
-                    guard w.isVisible, !(w is FloatingPanel) else { return false }
-                    return w.frameAutosaveName.contains("Settings")
-                        || w.title.localizedCaseInsensitiveContains("settings")
-                        || w.identifier?.rawValue.contains("Settings") == true
-                }
-                guard !stillHasVisibleSettings else { return }
+                guard !SettingsWindowController.shared.isVisible else { return }
                 NSApp.setActivationPolicy(.accessory)
                 if let obs = self?.settingsCloseObserver {
                     NotificationCenter.default.removeObserver(obs)

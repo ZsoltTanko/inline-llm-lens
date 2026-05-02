@@ -17,7 +17,6 @@ struct PanelView: View {
     var onClose: () -> Void
 
     @State private var selectionExpanded: Bool = false
-    @State private var followUpVisible: Bool = false
     @FocusState private var followUpFocused: Bool
     @FocusState private var userInputFocused: Bool
     @State private var copyHover: Bool = false
@@ -41,10 +40,12 @@ struct PanelView: View {
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        // Fallback for when a SwiftUI `TextField` is first responder.
+        // The primary Esc handler lives on `FloatingPanel.cancelOperation`
+        // so it works even when no SwiftUI view is focused.
         .onExitCommand {
-            if followUpVisible {
-                followUpVisible = false
-                viewModel.followUpInput = ""
+            if viewModel.isFollowUpOpen {
+                viewModel.closeFollowUp()
             } else {
                 onClose()
             }
@@ -309,7 +310,7 @@ struct PanelView: View {
 
     @ViewBuilder
     private var followUpBar: some View {
-        if followUpVisible {
+        if viewModel.isFollowUpOpen {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.turn.down.right")
                     .font(.system(size: 10))
@@ -320,7 +321,7 @@ struct PanelView: View {
                     .focused($followUpFocused)
                     .onSubmit {
                         viewModel.sendFollowUp()
-                        followUpVisible = false
+                        viewModel.isFollowUpOpen = false
                     }
                 if !viewModel.followUpInput.trimmingCharacters(in: .whitespaces).isEmpty {
                     Text("↵")
@@ -355,7 +356,7 @@ struct PanelView: View {
     // MARK: - Actions
 
     private func showFollowUp() {
-        followUpVisible = true
+        viewModel.isFollowUpOpen = true
         DispatchQueue.main.async { followUpFocused = true }
     }
 
