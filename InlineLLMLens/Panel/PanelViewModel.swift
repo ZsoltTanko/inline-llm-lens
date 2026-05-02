@@ -13,6 +13,10 @@ final class PanelViewModel: ObservableObject {
     /// local `@State` so panel-level Esc handling (in `FloatingPanel`) can
     /// collapse the follow-up bar before closing the panel.
     @Published var isFollowUpOpen: Bool = false
+    /// Changes on every `reset(...)`. Views observe this with `.onChange`
+    /// to trigger per-invocation side effects (e.g. auto-focusing the
+    /// preset's user-input field) without needing a stable bundle ID.
+    @Published private(set) var invocationToken: UUID = UUID()
 
     @Published private(set) var conversation: [ChatMessage] = []
     @Published private(set) var streamingText: String = ""

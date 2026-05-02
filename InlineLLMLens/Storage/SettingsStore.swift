@@ -19,6 +19,41 @@ final class SettingsStore: ObservableObject {
         static let panelFontSize = "settings.panelFontSize"
         static let panelClickOffBehavior = "settings.panelClickOffBehavior"
         static let panelPlacement = "settings.panelPlacement"
+        static let panelAppearanceMode = "settings.panelAppearanceMode"
+        static let panelCustomBackgroundHex = "settings.panelCustomBackgroundHex"
+        static let panelCustomTextHex = "settings.panelCustomTextHex"
+    }
+
+    /// Fallback hex values for the custom-colors mode.
+    static let defaultPanelCustomBackgroundHex = "#1E1E1E"
+    static let defaultPanelCustomTextHex = "#F5F5F5"
+
+    /// How the floating panel's background and text are rendered.
+    ///
+    /// Named `PanelAppearanceMode` (not just `Appearance`) to avoid colliding
+    /// with `SwiftUI.ColorScheme` / `NSAppearance` in autocomplete at call
+    /// sites — this type controls *our* panel specifically.
+    enum PanelAppearanceMode: String, CaseIterable, Identifiable {
+        /// Translucent ultra-thin material — the current macOS "liquid
+        /// glass" look that tracks system light/dark.
+        case system
+        /// Solid light background + dark text, regardless of system theme.
+        case light
+        /// Solid dark background + light text, regardless of system theme.
+        case dark
+        /// User-supplied hex values for background and text.
+        case custom
+
+        var id: String { rawValue }
+
+        var label: String {
+            switch self {
+            case .system: return "System (translucent)"
+            case .light:  return "Light (opaque)"
+            case .dark:   return "Dark (opaque)"
+            case .custom: return "Custom colors"
+            }
+        }
     }
 
     /// Where the floating panel appears on invocation.
@@ -83,7 +118,10 @@ final class SettingsStore: ObservableObject {
             Keys.showMenuBarIcon: true,
             Keys.panelFontSize: SettingsStore.defaultPanelFontSize,
             Keys.panelClickOffBehavior: PanelClickOffBehavior.stayOnTop.rawValue,
-            Keys.panelPlacement: PanelPlacement.nearMouse.rawValue
+            Keys.panelPlacement: PanelPlacement.nearMouse.rawValue,
+            Keys.panelAppearanceMode: PanelAppearanceMode.system.rawValue,
+            Keys.panelCustomBackgroundHex: SettingsStore.defaultPanelCustomBackgroundHex,
+            Keys.panelCustomTextHex: SettingsStore.defaultPanelCustomTextHex
         ])
     }
 
@@ -150,6 +188,27 @@ final class SettingsStore: ObservableObject {
             defaults.set(newValue.rawValue, forKey: Keys.panelPlacement)
             objectWillChange.send()
         }
+    }
+
+    var panelAppearanceMode: PanelAppearanceMode {
+        get {
+            let raw = defaults.string(forKey: Keys.panelAppearanceMode) ?? ""
+            return PanelAppearanceMode(rawValue: raw) ?? .system
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.panelAppearanceMode)
+            objectWillChange.send()
+        }
+    }
+
+    var panelCustomBackgroundHex: String {
+        get { defaults.string(forKey: Keys.panelCustomBackgroundHex) ?? SettingsStore.defaultPanelCustomBackgroundHex }
+        set { defaults.set(newValue, forKey: Keys.panelCustomBackgroundHex); objectWillChange.send() }
+    }
+
+    var panelCustomTextHex: String {
+        get { defaults.string(forKey: Keys.panelCustomTextHex) ?? SettingsStore.defaultPanelCustomTextHex }
+        set { defaults.set(newValue, forKey: Keys.panelCustomTextHex); objectWillChange.send() }
     }
 
     var panelClickOffBehavior: PanelClickOffBehavior {

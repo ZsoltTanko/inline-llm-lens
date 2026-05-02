@@ -4,10 +4,19 @@ import MarkdownUI
 struct MarkdownResponseView: View {
     let text: String
     let fontSize: CGFloat
+    /// Optional override for body text color. `nil` means "use whatever the
+    /// environment's `.primary` resolves to" — which follows the forced or
+    /// system `ColorScheme`.
+    let textOverrideColor: Color?
 
-    init(text: String, fontSize: CGFloat = CGFloat(SettingsStore.defaultPanelFontSize)) {
+    init(
+        text: String,
+        fontSize: CGFloat = CGFloat(SettingsStore.defaultPanelFontSize),
+        textOverrideColor: Color? = nil
+    ) {
         self.text = text
         self.fontSize = fontSize
+        self.textOverrideColor = textOverrideColor
     }
 
     var body: some View {
@@ -15,7 +24,7 @@ struct MarkdownResponseView: View {
             EmptyView()
         } else {
             Markdown(text)
-                .markdownTheme(.inlineLens(fontSize: fontSize))
+                .markdownTheme(.inlineLens(fontSize: fontSize, textOverrideColor: textOverrideColor))
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -26,10 +35,13 @@ private extension Theme {
     /// Tight, glanceable theme tuned for the floating panel.
     /// Headings are only mildly larger than body so the response reads as a
     /// single paragraph stream; lists and code blocks get compact spacing.
-    static func inlineLens(fontSize: CGFloat) -> Theme {
+    static func inlineLens(fontSize: CGFloat, textOverrideColor: Color? = nil) -> Theme {
         Theme()
             .text {
                 FontSize(fontSize)
+                if let textOverrideColor {
+                    ForegroundColor(textOverrideColor)
+                }
             }
             .code {
                 FontFamilyVariant(.monospaced)

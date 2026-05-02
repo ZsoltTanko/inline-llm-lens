@@ -23,23 +23,31 @@ struct PanelView: View {
 
     private var fontSize: CGFloat { CGFloat(settings.panelFontSize) }
 
+    private var resolvedAppearance: PanelResolvedAppearance {
+        PanelAppearanceResolver.resolve(
+            mode: settings.panelAppearanceMode,
+            customBackgroundHex: settings.panelCustomBackgroundHex,
+            customTextHex: settings.panelCustomTextHex
+        )
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
+        let appearance = resolvedAppearance
+        return VStack(spacing: 0) {
             header
             selectionPreview
             responseArea
             errorBar
             followUpBar
         }
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
+        .background(backgroundShape(for: appearance))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .modifier(ForegroundColorModifier(tintColor: appearance.foregroundColor))
+        .modifier(ColorSchemeOverrideModifier(scheme: appearance.forcedColorScheme))
         // Fallback for when a SwiftUI `TextField` is first responder.
         // The primary Esc handler lives on `FloatingPanel.cancelOperation`
         // so it works even when no SwiftUI view is focused.
@@ -196,7 +204,11 @@ struct PanelView: View {
                             emptyResponsePlaceholder
                         }
                     } else {
-                        MarkdownResponseView(text: viewModel.streamingText, fontSize: fontSize)
+                        MarkdownResponseView(
+                            text: viewModel.streamingText,
+                            fontSize: fontSize,
+                            textOverrideColor: resolvedAppearance.foregroundColor
+                        )
                     }
                 }
                 .padding(.horizontal, 12)
@@ -370,5 +382,46 @@ struct PanelView: View {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(viewModel.streamingText, forType: .string)
+    }
+
+    // MARK: - Appearance helpers
+
+    @ViewBuilder
+    private func backgroundShape(for appearance: PanelResolvedAppearance) -> some View {
+        switch appearance.backgroundFill {
+        case .translucentMaterial:
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
+        case .solid(let fillColor):
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(fillColor)
+        }
+    }
+}
+
+/// Applies `foregroundStyle(color)` only when a tint is provided, leaving
+/// the system defaults intact otherwise.
+private struct ForegroundColorModifier: ViewModifier {
+    let tintColor: Color?
+    func body(content: Content) -> some View {
+        if let tintColor {
+            content.foregroundStyle(tintColor)
+        } else {
+            content
+        }
+    }
+}
+
+/// Forces a specific `ColorScheme` on the subtree when one is provided,
+/// so system-drawn controls contrast correctly against the chosen
+/// background. `nil` means follow the system setting.
+private struct ColorSchemeOverrideModifier: ViewModifier {
+    let scheme: ColorScheme?
+    func body(content: Content) -> some View {
+        if let scheme {
+            content.environment(\.colorScheme, scheme)
+        } else {
+            content
+        }
     }
 }

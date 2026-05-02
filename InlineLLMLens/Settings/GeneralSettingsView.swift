@@ -10,6 +10,9 @@ struct GeneralSettingsView: View {
     @AppStorage(SettingsStore.Keys.panelFontSize) private var panelFontSize: Double = SettingsStore.defaultPanelFontSize
     @AppStorage(SettingsStore.Keys.panelClickOffBehavior) private var clickOffBehaviorRaw: String = SettingsStore.PanelClickOffBehavior.stayOnTop.rawValue
     @AppStorage(SettingsStore.Keys.panelPlacement) private var panelPlacementRaw: String = SettingsStore.PanelPlacement.nearMouse.rawValue
+    @AppStorage(SettingsStore.Keys.panelAppearanceMode) private var panelAppearanceModeRaw: String = SettingsStore.PanelAppearanceMode.system.rawValue
+    @AppStorage(SettingsStore.Keys.panelCustomBackgroundHex) private var panelCustomBackgroundHex: String = SettingsStore.defaultPanelCustomBackgroundHex
+    @AppStorage(SettingsStore.Keys.panelCustomTextHex) private var panelCustomTextHex: String = SettingsStore.defaultPanelCustomTextHex
 
     var body: some View {
         Form {
@@ -41,6 +44,23 @@ struct GeneralSettingsView: View {
                 Text("Default \(Int(SettingsStore.defaultPanelFontSize)) pt. Affects the response text in the floating panel.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+
+                Picker("Panel theme", selection: Binding(
+                    get: {
+                        SettingsStore.PanelAppearanceMode(rawValue: panelAppearanceModeRaw) ?? .system
+                    },
+                    set: { newValue in
+                        panelAppearanceModeRaw = newValue.rawValue
+                    }
+                )) {
+                    ForEach(SettingsStore.PanelAppearanceMode.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+
+                if (SettingsStore.PanelAppearanceMode(rawValue: panelAppearanceModeRaw) ?? .system) == .custom {
+                    customColorsEditor
+                }
             }
 
             Section("Window behaviour") {
@@ -92,5 +112,53 @@ struct GeneralSettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: - Custom colors editor
+
+    @ViewBuilder
+    private var customColorsEditor: some View {
+        hexRow(
+            label: "Background hex",
+            placeholder: SettingsStore.defaultPanelCustomBackgroundHex,
+            value: $panelCustomBackgroundHex
+        )
+        hexRow(
+            label: "Text hex",
+            placeholder: SettingsStore.defaultPanelCustomTextHex,
+            value: $panelCustomTextHex
+        )
+        Text("Accepts #RGB, #RRGGBB, or #RRGGBBAA. Invalid values fall back to safe defaults.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private func hexRow(label: String, placeholder: String, value: Binding<String>) -> some View {
+        HStack {
+            Text(label)
+            TextField(placeholder, text: value)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+                .frame(maxWidth: 140)
+            swatch(for: value.wrappedValue)
+            if !HexColor.isValid(value.wrappedValue) {
+                Text("invalid")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func swatch(for hexString: String) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color(hexString: hexString) ?? .gray)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5)
+            )
+            .frame(width: 24, height: 16)
     }
 }
