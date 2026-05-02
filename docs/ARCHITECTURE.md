@@ -25,7 +25,7 @@ The codebase is organized by feature module under `InlineLLMLens/`. Each module 
 | `Hotkey/` | `HotkeyManager` (thin wrapper over the `KeyboardShortcuts` SPM package) and `ShortcutNames` (typed shortcut identifiers). |
 | `Services/` | `ServicesHandler` — exposes the `@objc askInlineLLM(_:userData:error:)` selector that macOS Services calls. |
 | `MenuBar/` | `MenuBarController` — owns the `NSStatusItem` and its `NSMenu`. |
-| `Panel/` | The floating response panel: `FloatingPanel` (NSPanel subclass), `FloatingPanelController`, `PanelPositioner`, `PanelView` (SwiftUI), `PanelViewModel`, plus subviews (`PresetPicker`, `ModelPicker`, `MarkdownResponseView`). |
+| `Panel/` | The floating response panel: `FloatingPanel` (borderless `NSPanel`), `FloatingPanelController`, `PanelPositioner`, `PanelView` (SwiftUI — chromeless, response-first layout), `PanelViewModel`, plus subviews (`PresetPicker`, `ModelPicker`, `MarkdownResponseView`). |
 | `Settings/` | SwiftUI `Settings { }` scene with five tabs: General, Models, Prompts, Capture, Permissions. |
 | `Onboarding/` | First-launch onboarding window. |
 | `App/` | Entry point: `InlineLLMLensApp` (SwiftUI `@main`), `AppDelegate` (wires everything together), `Info.plist`, entitlements. |
@@ -103,7 +103,7 @@ The Services entry point (`.servicesInput`) bypasses this orchestration entirely
 These are the few types you should internalize before changing anything:
 
 - `ContextBundle` (`Capture/ContextBundle.swift`) — the per-invocation envelope: `selectedText`, `frontmostAppName`, `frontmostWindowTitle`, `captureMethod`, `timestamp`. Future richer context (surrounding text, URL, screenshot) will be added here.
-- `CaptureMethod` (`Capture/CaptureMethod.swift`) — `servicesInput | accessibility | clipboardFallback | manualInput`. Surfaced in the panel's diagnostics footer for debugging.
+- `CaptureMethod` (`Capture/CaptureMethod.swift`) — `servicesInput | accessibility | clipboardFallback | manualInput`. Available as a `UserDefaults` / log field for debugging; no longer shown in the panel UI.
 - `PromptPreset` (`Prompts/PromptPreset.swift`) — user-defined recipe. Owns the system prompt template plus behavior flags (`requiresUserInput`, `requiresSelection`, `autoSend`), optional `preferredModelID` / `temperature` / `maxOutputTokens` / `reasoningEffort` overrides, dropdown pinning, and stable hotkey identifier (`hotkeyShortcutKey`).
 - `PromptResolution` (`Prompt/PromptBuilder.swift`) — snapshot of how a single invocation was rendered. Stored on history entries so editing a preset later never rewrites the past.
 - `ModelConfig` (`Models/ModelConfig.swift`) — one provider+model+key triple. `apiKeyReference` is the Keychain account name (defaults to the model's UUID). `reasoningEffort: String?` is sent verbatim as `reasoning_effort` when non-empty.
@@ -133,7 +133,7 @@ There's one wrinkle: SwiftUI's `Settings { }` scene only presents reliably under
 
 This makes the Dock icon appear briefly while Settings is open, then vanish. Don't use a global `applicationDidResignActive` handler to revert the policy — that races with window presentation and can silently kill the Settings window. (We tried; see [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md).)
 
-**Floating panel activation.** When invoked via the global hotkey, the panel is presented with `NSApp.activate(ignoringOtherApps: true)` followed by `panel.makeKeyAndOrderFront(nil)` so it grabs keyboard focus immediately — Esc closes, Cmd+, opens Settings, etc. We deliberately do **not** use `.nonactivatingPanel` in the panel's style mask: that flag tells AppKit "don't activate the owning app when this panel becomes key", which cancels the activate call and leaves keyboard input routed elsewhere. Note: under `.accessory` policy the macOS top menu bar still belongs to whatever app was previously frontmost — accessory apps do not get a menu bar. That's why the panel itself surfaces a gear (⌘,) for Settings and the status-bar icon menu carries the rest of the app commands.
+**Floating panel activation.** When invoked via the global hotkey, the panel is presented with `NSApp.activate(ignoringOtherApps: true)` followed by `panel.makeKeyAndOrderFront(nil)` so it grabs keyboard focus immediately — Esc closes, ⌘↵ sends, ⌘C copies, ⌘L opens follow-up, ⌘, opens Settings. The panel uses `.nonactivatingPanel` in its style mask alongside the explicit `NSApp.activate` call; this combination keeps the owning app active while still allowing it to grab key focus. Note: under `.accessory` policy the macOS top menu bar still belongs to whatever app was previously frontmost — accessory apps do not get a menu bar. That's why the panel itself surfaces a gear (⌘,) for Settings and the status-bar icon menu carries the rest of the app commands.
 
 ## Storage layout
 
@@ -141,7 +141,7 @@ Persisted state lives in three places:
 
 | What | Where | Format |
 | --- | --- | --- |
-| User preferences | `UserDefaults.standard` (keys under `settings.*`) | Native types |
+| User preferences (autoSend, streamResponses, panelFontSize, …) | `UserDefaults.standard` (keys under `settings.*`) | Native types |
 | Configured models | `~/Library/Application Support/InlineLLMLens/models.json` | JSON, `[ModelConfig]` |
 | Prompt presets | `~/Library/Application Support/InlineLLMLens/prompts.json` | JSON, `[PromptPreset]` |
 | API keys | macOS login Keychain, service `com.inlinellmlens`, account `<ModelConfig.id.uuidString>` | Generic password (`kSecClassGenericPassword`) |
@@ -154,7 +154,7 @@ Persisted state lives in three places:
 
 ## Diagnostics surface
 
-- The floating panel has a permanent footer showing AX trust state, capture method, and frontmost app: `AX: trusted · capture: accessibility · from: TextEdit`. Useful for any "why isn't this working in app X?" report.
+- The floating panel **no longer has a diagnostics footer**. AX trust state is surfaced as a small orange dot in the panel header (next to the gear icon) with a tooltip explaining the impact. All other capture metadata is available via logs.
 - All notable events go through `AppLogger` (`Util/Logger.swift`), which writes to `os.Logger(subsystem: "com.inlinellmlens", category: "app")`. Live tail with:
   ```bash
   log stream --predicate 'subsystem == "com.inlinellmlens"' --level info

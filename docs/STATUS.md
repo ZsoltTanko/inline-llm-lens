@@ -13,6 +13,7 @@ What's shipped vs. what's deliberately deferred. Read alongside [`../mvp_spec.md
 | M5 — Prompt presets + model selector | §21 | ✅ | The original hard-coded mode enum was replaced with user-defined `PromptPreset`s: editable system prompt with template variables, optional per-preset model / temperature / max-tokens / reasoning-effort overrides, per-preset hotkey, dropdown pinning, JSON import/export. Seeded with one "Explain" preset on first launch. |
 | M6 — Follow-up | §21 | ✅ | In-panel `[ChatMessage]` conversation state; Cmd+Enter to send. |
 | M7 — Polish (streaming, Markdown, clipboard fallback, launch-at-login) | §21 | ✅ | SSE streaming via dedicated tuned URLSession. |
+| Panel UI redesign — chromeless, response-first layout | post-MVP | ✅ | Borderless panel (no title-bar / traffic lights), diagnostics footer removed, follow-up bar hidden behind ⌘L, font-size setting in Settings → General → Appearance (11–18 pt, default 13 pt), tighter Markdown theme, AX status as an orange dot tooltip. |
 
 ## Provider support
 
@@ -60,7 +61,7 @@ If you're new and looking for a high-value first PR:
 1. **Add CI** — GitHub Actions on macOS runners running `xcodegen generate && xcodebuild test`. We have none.
 2. **Improve the AX BFS** — currently bounded at depth 6. Some apps put text-bearing elements deeper or behind `kAXVisibleChildrenAttribute`. Pick a real-world app it fails in and fix it.
 3. **Pre-seed model templates** — first-launch onboarding could offer one-click templates for OpenAI / OpenRouter / Ollama instead of an empty Models tab.
-4. **Add a "thinking… 12s" elapsed timer** to the panel while waiting for first delta from reasoning models.
+4. **Add a "thinking… 12s" elapsed timer** to the panel while waiting for first delta from reasoning models. The response area currently shows only a `ProgressView` spinner; a live elapsed counter would significantly reduce perceived latency for reasoning models.
 5. **History browser UI** — entries already snapshot the resolved system prompt + user message + model + inference params; just no view to read them yet.
 
 Anything bigger than these — read the spec's §22 (later functionality) and align with the spec owner first.

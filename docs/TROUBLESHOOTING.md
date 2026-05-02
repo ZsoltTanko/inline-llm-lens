@@ -4,15 +4,11 @@ These are the macOS-integration potholes we hit during MVP development. Read thi
 
 ## Quick triage
 
-The floating panel has a permanent diagnostics footer:
+**AX trust:** An orange dot appears in the panel header (next to the gear icon) when Accessibility access is not granted. If you see it → it's a permissions issue. Hover the dot for a short description.
 
-```
-[shield] AX: trusted/not trusted · capture: <method> · from: <appname>
-```
+**Capture method:** The panel no longer shows the capture method inline. Check the log for `SelectionCaptureService` events — it logs the chosen strategy and text length on every invocation. If a real selection is producing an empty result, the source app likely doesn't expose text via AX; switch to right-click Services or enable clipboard fallback in Settings → Capture.
 
-Use it as your first signal. If `AX: not trusted` → it's a permissions issue. If `capture: manualInput` despite a real selection → AX is on but the source app doesn't expose text via AX (Chrome, Safari, Terminal, Electron). Switch to right-click Services or enable clipboard fallback.
-
-For more detail, tail the log:
+Tail the log for everything:
 
 ```bash
 log stream --predicate 'subsystem == "com.inlinellmlens"' --level info
@@ -33,7 +29,7 @@ The hotkey path uses macOS Accessibility APIs, which require **Accessibility per
 1. Press the hotkey **once** with the app running. A system dialog should appear asking for Accessibility access. Click **Open System Settings**.
 2. In **Privacy & Security → Accessibility**, toggle the `InlineLLMLens` row on.
 3. **Quit the app** (menu-bar icon → Quit) and **relaunch** it. AX trust is cached at process start; the running process never sees the new permission until it restarts.
-4. Press the hotkey again with text selected. The panel footer should now read `AX: trusted · capture: accessibility`.
+4. Press the hotkey again with text selected. The orange dot in the panel header should disappear, and the log should show `capture: accessibility`.
 
 ### If a stale row is stuck
 
@@ -281,4 +277,4 @@ The Launch Services index in particular is sticky — without `lsregister -f`, d
 
 ## Anything else
 
-Capture logs and the in-panel diagnostics footer state, file an issue, link to the relevant spec section if behavior diverges from intent.
+Capture the `os.Logger` stream (see Quick triage above), file an issue, and link to the relevant spec section if behavior diverges from intent.

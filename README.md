@@ -6,9 +6,11 @@ A native macOS menu-bar utility that turns selected text anywhere on screen into
 
 ## What it does
 
-Select text in any app → trigger via global hotkey *or* right-click Services menu → see a small floating panel near your context with the LLM's answer streaming in. Optionally choose a different model or prompt mode, copy the result, ask a follow-up.
+Select text in any app → trigger via global hotkey *or* right-click Services menu → see a small floating panel near your context with the LLM's answer streaming in. Read it, hit Esc to dismiss — that's the whole loop.
 
-The product is positioned as **an inline semantic lens**, closer to Spotlight / PopClip / Apple Dictionary lookup than to a full chat app. Optimized for low interaction friction, frequent invocation, and minimal visual disruption.
+The panel is a chromeless, borderless surface: no title bar, no traffic-light buttons. The response is the primary element; configuration (preset chip, model chip, gear) sits in a slim strip at the top and stays out of the way. The follow-up bar is hidden by default and revealed only on demand.
+
+The product is positioned as **an inline semantic lens**, closer to Spotlight / PopClip / Apple Dictionary lookup than to a full chat app. Optimized for low interaction friction, frequent invocation, and minimal visual disruption — specifically for power users who want a precisely configured LLM inline in fast workflows.
 
 For the full product spec — problem framing, user stories, UX, prompt modes, non-goals, acceptance criteria, future roadmap — read [`mvp_spec.md`](mvp_spec.md). It is the source of truth for **what** and **why**; this codebase implements it.
 
@@ -27,6 +29,16 @@ MVP. All seven milestones from the spec (§21) are implemented and the app build
 7. Select text in any app and either:
    - Press **Option+Space** (configurable in Settings → General), or
    - Right-click → **Services → Ask Inline LLM**.
+
+**Panel keyboard shortcuts:**
+
+| Key | Action |
+| --- | --- |
+| `Esc` | Close panel (or collapse follow-up if open) |
+| `⌘↵` | Send / Ask |
+| `⌘C` | Copy response to clipboard |
+| `⌘L` | Open follow-up bar |
+| `⌘,` | Open Settings |
 
 If a Service entry doesn't appear in the right-click menu, see [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md#services-menu-entry-doesnt-appear).
 

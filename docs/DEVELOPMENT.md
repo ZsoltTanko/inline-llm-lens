@@ -138,15 +138,21 @@ LLM first delta in N.NNs
 
 If `headers received` is fast but `first delta` is many seconds later, you're hitting reasoning-model latency, not a client bug. See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md#streaming-feels-slow-to-start).
 
-### In-panel diagnostics footer
+### In-panel status indicator
 
-The floating panel always shows a footer with:
+The floating panel's title bar contains a small **orange dot** (next to the gear icon) when Accessibility access is not granted. Hovering it shows a tooltip with the full explanation. When AX is trusted and everything is working normally the dot is not shown.
 
-```
-[shield] AX: trusted/not trusted · capture: <method> · from: <appname>
-```
+Capture method, frontmost app, and preset/model details are no longer shown in the panel UI. For "why doesn't this work in app X?" triage, use the `os.Logger` stream (see above) — the `SelectionCaptureService` logs the chosen strategy and the resulting text length on every invocation.
 
-This tells you at a glance whether Accessibility is granted, which capture strategy ran, and what app the selection came from. Useful for triaging "doesn't work in app X" reports.
+**Panel keyboard shortcuts (useful during development):**
+
+| Key | Action |
+| --- | --- |
+| `Esc` | Close panel (collapses follow-up first if open) |
+| `⌘↵` | Send / Ask |
+| `⌘C` | Copy response |
+| `⌘L` | Toggle follow-up bar |
+| `⌘,` | Open Settings |
 
 ### Inspect persisted state
 
