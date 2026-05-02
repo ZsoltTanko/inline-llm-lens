@@ -3,7 +3,7 @@ import XCTest
 
 /// `SelectionCaptureService` integrates AppKit-only APIs (Accessibility, NSWorkspace,
 /// NSPasteboard simulation), so a fully isolated unit test would require deep refactor
-/// to inject capture strategies. The MVP keeps it minimal: assert that an empty
+/// to inject capture strategies. Kept minimal: assert that an empty
 /// environment falls through to `manualInput`. Strategy ordering is documented in code
 /// and exercised end-to-end manually.
 @MainActor

@@ -4,7 +4,7 @@ Recipes for the most common changes. Each recipe lists the files you'll touch an
 
 ## Add a new LLM provider
 
-The MVP ships only `OpenAICompatibleClient`, but the protocol seam is in place. Adding a native Anthropic / Gemini / Bedrock client is a localized change.
+Currently only `OpenAICompatibleClient` ships, but the protocol seam is in place. Adding a native Anthropic / Gemini / Bedrock client is a localized change.
 
 1. **Add an enum case** in `InlineLLMLens/Models/ProviderKind.swift`:
 
@@ -58,7 +58,7 @@ The MVP ships only `OpenAICompatibleClient`, but the protocol seam is in place. 
 
 ## Add a built-in default behavior — or just author a preset
 
-Prompt behavior is owned by user-defined `PromptPreset`s now; there's no enum to extend. To ship a new "out of the box" persona, edit `PromptPreset.seed` in `InlineLLMLens/Prompts/PromptPreset.swift` (used only on first launch when `prompts.json` is empty). Otherwise just create the preset in **Settings → Prompts**.
+Prompt behavior is owned by user-defined `PromptPreset`s now; there's no enum to extend. To ship a new "out of the box" persona, add it to `PromptPreset.factorySeeds` in `InlineLLMLens/Prompts/PromptPreset.swift` (the array is used only on first launch when `prompts.json` is empty, so existing users' catalogs are never overwritten). The shared base copy is in `seedBaseSystemPrompt` — reuse it unless the new preset really needs different framing. Otherwise just create the preset in **Settings → Prompts**.
 
 If you're adding a new template variable (currently `{{selection}}`, `{{userInput}}`, `{{app}}`, `{{windowTitle}}`, `{{date}}`):
 
@@ -77,7 +77,6 @@ Example: a "browser DOM via AppleScript" strategy for Safari/Chrome.
 2. **Implement the strategy** in `InlineLLMLens/Capture/BrowserDomCapture.swift` with an `async` static method returning `String?`.
 3. **Insert into the priority chain** in `SelectionCaptureService.captureForHotkey()`. Decide where it slots — for browsers it should go *before* `.accessibility` because AX of web content is nearly useless.
 4. **Plumb any toggles** through `SettingsStore` (e.g. `enableBrowserDomCapture`) and surface them in `Settings/CaptureSettingsView`.
-5. **Note for the spec.** Adding capture methods is squarely on the post-MVP roadmap (spec §22.1, §22.2, §22.5). Confirm with the spec owner before shipping a new one.
 
 ## Add a new setting
 
@@ -98,7 +97,7 @@ For a typed boolean / string / enum setting:
 3. **Use it downstream** — usually inside `OpenAICompatibleClient.buildRequest` (or your new provider). Send the field only when non-empty so non-supporting models aren't broken.
 4. **Write a test** if the field changes wire-format output. The `URLProtocol` stub in `OpenAICompatibleClientTests` can capture the request body and assert against it.
 
-`reasoningEffort` (added late in MVP) is the canonical example — search the codebase for it to see all the touch points.
+`reasoningEffort` is the canonical example — search the codebase for it to see all the touch points.
 
 ## Change the default hotkey
 
@@ -113,17 +112,3 @@ Existing users won't be affected — `KeyboardShortcuts` persists their choice o
 ## Add a menu bar item
 
 Edit `InlineLLMLens/MenuBar/MenuBarController.buildMenu()`. Wire its action to a new closure passed in the initializer, and route the closure to the appropriate `AppDelegate` method.
-
-## Things you should not do without spec sign-off
-
-The spec ([`../mvp_spec.md`](../mvp_spec.md) §5) explicitly excludes these from the MVP. Don't add them as side projects:
-
-- Screenshot capture or OCR (§22.3, §22.4).
-- Browser extension (§22.2).
-- Per-app adapters beyond the generic AX path (§22.5).
-- Auto-replace selected text (§22.6).
-- Any cloud backend, account, sync, or telemetry (§15, §22.8).
-- A multi-window chat-history browser.
-- Full DOM extraction.
-
-If a user asks for one of these, point them at the spec section and the post-MVP roadmap.

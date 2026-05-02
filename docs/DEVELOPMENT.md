@@ -148,11 +148,14 @@ Capture method, frontmost app, and preset/model details are no longer shown in t
 
 | Key | Action |
 | --- | --- |
-| `Esc` | Close panel (collapses follow-up first if open) |
+| `Esc` | Close panel (collapses follow-up first if open). Handled at the `NSPanel` level via `cancelOperation(_:)`, so it fires immediately after the panel is shown — no "click a text field to activate Esc" step. |
 | `⌘↵` | Send / Ask |
-| `⌘C` | Copy response |
+| `↵` | Send when the preset's user-input field is focused. `Shift+↵` inserts a newline. |
+| `⌘C` | Copy *selected* text if a selection is active inside the Markdown view; otherwise falls back to copying the full response. Panel overrides `performKeyEquivalent(with:)` and dispatches `copy:` down the responder chain first. |
 | `⌘L` | Toggle follow-up bar |
-| `⌘,` | Open Settings |
+| `⌘,` | Open Settings (panel stays open behind it) |
+
+Settings window also supports `Esc` to close (private `SettingsWindow` subclass overrides `cancelOperation(_:)` → `performClose(nil)`).
 
 ### Inspect persisted state
 
@@ -229,9 +232,9 @@ Not yet configured. Suggested first step: a GitHub Actions workflow on macOS run
 
 ## Releasing (future)
 
-Out of scope for the MVP. When it's time:
+Not yet in scope. When it's time:
 
 - Get a paid Apple Developer ID.
 - Replace ad-hoc signing with Developer ID signing in `project.yml`.
 - Notarize via `notarytool` after build.
-- Decide on a distribution channel (direct download, Homebrew cask, MAS — each has very different sandbox/entitlement implications; MAS would require turning the sandbox back on, which the MVP currently disables).
+- Decide on a distribution channel (direct download, Homebrew cask, MAS — each has very different sandbox/entitlement implications; MAS would require turning the sandbox back on, which is currently disabled in entitlements).

@@ -1,11 +1,11 @@
 # Architecture
 
-This document explains how the Inline LLM Lens codebase is organized, how a single user invocation flows end-to-end, and the conventions you should follow when extending it. For *what* the app does and *why*, read [`../mvp_spec.md`](../mvp_spec.md).
+This document explains how the Inline LLM Lens codebase is organized, how a single user invocation flows end-to-end, and the conventions you should follow when extending it.
 
 ## Guiding principles
 
-1. **Inline lens, not chat app.** Every architectural choice should keep invocation latency low and the UI footprint small. If you find yourself adding a window, sidebar, or persistent state, stop and reread the spec's positioning section (§3).
-2. **Provider-agnostic at the seams.** A single `LLMProvider` protocol guards all external LLM calls. The MVP ships only `OpenAICompatibleClient`, but everything downstream of the provider should be ignorant of vendor specifics.
+1. **Inline lens, not chat app.** Every architectural choice should keep invocation latency low and the UI footprint small. If you find yourself adding a window, sidebar, or persistent state, stop and reconsider — this app is positioned as an inline semantic lens (closer to Spotlight / PopClip / Apple Dictionary lookup), not a chat UI.
+2. **Provider-agnostic at the seams.** A single `LLMProvider` protocol guards all external LLM calls. Currently only `OpenAICompatibleClient` ships, but everything downstream of the provider should be ignorant of vendor specifics.
 3. **Capture is best-effort and layered.** Different macOS apps expose selected text in wildly different ways. The capture pipeline tries strategies in priority order and degrades gracefully to manual input.
 4. **Privacy-conservative.** No telemetry. No background capture. The app reads pasteboards or AX selections only on explicit user invocation.
 
@@ -25,8 +25,8 @@ The codebase is organized by feature module under `InlineLLMLens/`. Each module 
 | `Hotkey/` | `HotkeyManager` (thin wrapper over the `KeyboardShortcuts` SPM package) and `ShortcutNames` (typed shortcut identifiers). |
 | `Services/` | `ServicesHandler` — exposes the `@objc askInlineLLM(_:userData:error:)` selector that macOS Services calls. |
 | `MenuBar/` | `MenuBarController` — owns the `NSStatusItem` and its `NSMenu`. |
-| `Panel/` | The floating response panel: `FloatingPanel` (borderless `NSPanel`), `FloatingPanelController`, `PanelPositioner`, `PanelView` (SwiftUI — chromeless, response-first layout), `PanelViewModel`, plus subviews (`PresetPicker`, `ModelPicker`, `MarkdownResponseView`). |
-| `Settings/` | SwiftUI `Settings { }` scene with five tabs: General, Models, Prompts, Capture, Permissions. |
+| `Panel/` | The floating response panel: `FloatingPanel` (borderless `NSPanel`, with `cancelOperation(_:)` + `performKeyEquivalent(with:)` overrides for panel-level Esc / ⌘C handling), `FloatingPanelController` (wires Esc + ⌘C fallback, observes `didResignKeyNotification` for click-off behaviour, applies `panel.level` per the user's setting), `PanelPositioner` (near-cursor / centered-on-cursor / centered-on-screen), `PanelAppearanceResolver` (translates the appearance setting — system / light / dark / custom hex — into background fill, text-color override, and forced `ColorScheme`), `PanelView` (SwiftUI — chromeless, response-first layout, with `.onKeyPress(.return)` wiring so bare Return sends in the preset input field), `PanelViewModel`, plus subviews (`PresetPicker`, `ModelPicker`, `MarkdownResponseView`). |
+| `Settings/` | AppKit-owned settings window (`SettingsWindowController` — an `NSWindow` + `NSHostingController` hosting `SettingsRoot`) with five tabs: General, Models, Prompts, Capture, Permissions. Deliberately not the SwiftUI `Settings { }` scene — see the "App lifecycle and activation policy" section below for rationale. |
 | `Onboarding/` | First-launch onboarding window. |
 | `App/` | Entry point: `InlineLLMLensApp` (SwiftUI `@main`), `AppDelegate` (wires everything together), `Info.plist`, entitlements. |
 
@@ -123,17 +123,27 @@ These are the few types you should internalize before changing anything:
 
 The app is an `LSUIElement` (no Dock icon) menu-bar agent. Default activation policy is `.accessory`.
 
-There's one wrinkle: SwiftUI's `Settings { }` scene only presents reliably under `.regular` activation policy. The fix in `AppDelegate.openSettings()`:
+**Settings window.** We deliberately do **not** use SwiftUI's `Settings { }` scene. It was flakey to reopen under `.accessory` activation policy — the previous implementation used a 100 ms delay and `NSApp.sendAction(Selector(("showSettingsWindow:")), …)` to work around it, had to close the floating panel before opening Settings, and still wouldn't reliably reopen from the panel's gear button. `InlineLLMLensApp.body` now contains an empty `Settings { EmptyView() }` purely to satisfy the `App` protocol, and Settings is instead owned by `SettingsWindowController` — a singleton wrapping an `NSWindow` + `NSHostingController(rootView: SettingsRoot())`.
 
-1. Switch to `.regular`.
+`AppDelegate.openSettings()` does just three things:
+
+1. Flip `NSApp.setActivationPolicy(.regular)` so the window can properly become key and gets a Cmd-Tab entry. (This is the only reason you see a Dock icon flash while Settings is open — the trade-off we accept in exchange for a reliable, fully focusable settings window under `LSUIElement`.)
 2. `NSApp.activate(ignoringOtherApps: true)`.
-3. Close the floating panel (it sits at `.floating` and would occlude Settings).
-4. After a 100 ms delay (lets the policy switch + status-menu dismissal settle), send the `showSettingsWindow:` action.
-5. Subscribe to `NSWindow.willCloseNotification`; revert to `.accessory` when no Settings-like window remains visible.
+3. `SettingsWindowController.shared.show()`.
 
-This makes the Dock icon appear briefly while Settings is open, then vanish. Don't use a global `applicationDidResignActive` handler to revert the policy — that races with window presentation and can silently kill the Settings window. (We tried; see [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md).)
+A `willCloseNotification` observer reverts the activation policy to `.accessory` when the Settings window closes, matching on `SettingsWindowController.isSettingsWindow(window)` (identity) rather than fragile title/identifier string heuristics. The floating panel is never closed by opening Settings; `FloatingPanelController`'s click-off observer ignores `resignKey` when another of our own windows becomes key (`NSApp.keyWindow !== panel`), so the panel stays put regardless of the user's click-off-behaviour setting.
 
-**Floating panel activation.** When invoked via the global hotkey, the panel is presented with `NSApp.activate(ignoringOtherApps: true)` followed by `panel.makeKeyAndOrderFront(nil)` so it grabs keyboard focus immediately — Esc closes, ⌘↵ sends, ⌘C copies, ⌘L opens follow-up, ⌘, opens Settings. The panel uses `.nonactivatingPanel` in its style mask alongside the explicit `NSApp.activate` call; this combination keeps the owning app active while still allowing it to grab key focus. Note: under `.accessory` policy the macOS top menu bar still belongs to whatever app was previously frontmost — accessory apps do not get a menu bar. That's why the panel itself surfaces a gear (⌘,) for Settings and the status-bar icon menu carries the rest of the app commands.
+**Floating panel activation and key handling.** When invoked via the global hotkey or Services, the panel is presented with `NSApp.activate(ignoringOtherApps: true)` followed by `panel.makeKeyAndOrderFront(nil)` so it grabs keyboard focus immediately. The panel uses `.nonactivatingPanel` in its style mask alongside the explicit `NSApp.activate` call; this combination keeps the owning app active while still allowing it to grab key focus.
+
+Keyboard handling is intentionally pushed *down* to the `NSPanel` subclass rather than relying on SwiftUI's `.onExitCommand` / `.keyboardShortcut`, both of which depend on a specific SwiftUI view being focused:
+
+- **Esc.** `FloatingPanel.cancelOperation(_:)` is overridden (and deliberately does *not* call `super` — the default walks the rest of the responder chain and, finding no handler, produces the "not valid" beep). It invokes an `onCancel` closure the controller installs, which first collapses the follow-up bar if open, otherwise closes the panel. `PanelView.onExitCommand` is kept as a fallback for the case where a `TextField` is first responder. The Settings window uses the same pattern — a private `SettingsWindow` subclass overrides `cancelOperation(_:)` to call `performClose(nil)`.
+- **⌘C.** `FloatingPanel.performKeyEquivalent(with:)` intercepts ⌘C. It first dispatches `copy:` down the responder chain via `NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, …)`; if any view with an active text selection handles it, the selection goes to the clipboard and the shortcut is consumed. Only if nothing handles `copy:` does it call `onCopyFallback`, which writes the full response to the pasteboard. The SwiftUI copy button's `.keyboardShortcut("c", modifiers: .command)` was removed — it short-circuited the responder chain and prevented partial copies.
+- **Click-off behaviour.** `FloatingPanelController` observes `NSWindow.didResignKeyNotification` on the panel. On each resignKey (after hopping one runloop tick so `NSApp.keyWindow` is settled) it branches on `settings.panelClickOffBehavior`: *stay on top* is a no-op, *recede to background* lowers `panel.level` to `.normal`, *close* dismisses the panel. Same-app resignKey (another of our windows took focus) is always ignored so Settings doesn't trip it.
+
+Note: under `.accessory` policy the macOS top menu bar still belongs to whatever app was previously frontmost — accessory apps do not get a menu bar. That's why the panel itself surfaces a gear (⌘,) for Settings and the status-bar icon menu carries the rest of the app commands.
+
+**Hotkey handler registration.** `KeyboardShortcuts.onKeyDown(for:)` is *additive* — calling it twice for the same `Name` installs two handlers, and the library has no public per-name handler-removal API. `HotkeyManager.syncPresetHotkeys(...)` therefore calls `KeyboardShortcuts.removeAllHandlers()` first, then re-registers the global and per-preset handlers in one go. Any caller that wants to change bindings must go through `syncPresetHotkeys(...)`. The subscription to `presetStore.$presets` uses `.dropFirst()` so the synchronous current-value emission doesn't double-register at launch. Missing this detail previously caused per-preset hotkeys to fire multiple times per keypress, presenting the panel concurrently and appearing to crash the app.
 
 ## Storage layout
 
@@ -141,7 +151,7 @@ Persisted state lives in three places:
 
 | What | Where | Format |
 | --- | --- | --- |
-| User preferences (autoSend, streamResponses, panelFontSize, …) | `UserDefaults.standard` (keys under `settings.*`) | Native types |
+| User preferences (autoSend, streamResponses, panelFontSize, panelPlacement, panelClickOffBehavior, panelAppearanceMode, panelCustomBackgroundHex, panelCustomTextHex, …) | `UserDefaults.standard` (keys under `settings.*`) | Native types / raw strings for enums |
 | Configured models | `~/Library/Application Support/InlineLLMLens/models.json` | JSON, `[ModelConfig]` |
 | Prompt presets | `~/Library/Application Support/InlineLLMLens/prompts.json` | JSON, `[PromptPreset]` |
 | API keys | macOS login Keychain, service `com.inlinellmlens`, account `<ModelConfig.id.uuidString>` | Generic password (`kSecClassGenericPassword`) |
@@ -165,18 +175,3 @@ Persisted state lives in three places:
   ```
 
 See [`DEVELOPMENT.md`](DEVELOPMENT.md) for more debugging recipes.
-
-## Where the spec ends and the code begins
-
-The spec ([`../mvp_spec.md`](../mvp_spec.md)) defines:
-
-- Behavior (UX flows, prompt modes, panel layout, settings, acceptance criteria).
-- Constraints (privacy stance, non-goals, MVP non-goals).
-- Forward-looking shape (later features, future context bundle, app adapters).
-
-The code:
-
-- Implements the spec's Milestones 1–7 (§21).
-- Adds the small handful of pragmatic decisions the spec explicitly leaves open: choice of OpenAI-compatible-only provider for MVP, choice of XcodeGen for project generation, choice of `KeyboardShortcuts` and `MarkdownUI` SPM dependencies, the `reasoning_effort` model field.
-
-If the code and the spec disagree, the spec wins — file an issue or ask the spec owner before "fixing" the code.

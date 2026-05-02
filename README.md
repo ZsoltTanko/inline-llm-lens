@@ -2,8 +2,6 @@
 
 A native macOS menu-bar utility that turns selected text anywhere on screen into a lightweight, configurable, inline LLM interaction without opening a browser or full chat app.
 
-> One-sentence definition (from [`mvp_spec.md`](mvp_spec.md) §23).
-
 ## What it does
 
 Select text in any app → trigger via global hotkey *or* right-click Services menu → see a small floating panel near your context with the LLM's answer streaming in. Read it, hit Esc to dismiss — that's the whole loop.
@@ -11,12 +9,6 @@ Select text in any app → trigger via global hotkey *or* right-click Services m
 The panel is a chromeless, borderless surface: no title bar, no traffic-light buttons. The response is the primary element; configuration (preset chip, model chip, gear) sits in a slim strip at the top and stays out of the way. The follow-up bar is hidden by default and revealed only on demand.
 
 The product is positioned as **an inline semantic lens**, closer to Spotlight / PopClip / Apple Dictionary lookup than to a full chat app. Optimized for low interaction friction, frequent invocation, and minimal visual disruption — specifically for power users who want a precisely configured LLM inline in fast workflows.
-
-For the full product spec — problem framing, user stories, UX, prompt modes, non-goals, acceptance criteria, future roadmap — read [`mvp_spec.md`](mvp_spec.md). It is the source of truth for **what** and **why**; this codebase implements it.
-
-## Status
-
-MVP. All seven milestones from the spec (§21) are implemented and the app builds, runs, and ships its core loop end-to-end. See [`docs/STATUS.md`](docs/STATUS.md) for a per-milestone breakdown and what's deliberately out of scope.
 
 ## Quick start (users)
 
@@ -30,15 +22,28 @@ MVP. All seven milestones from the spec (§21) are implemented and the app build
    - Press **Option+Space** (configurable in Settings → General), or
    - Right-click → **Services → Ask Inline LLM**.
 
+Two prompt presets ship seeded on first launch — **Explain** (auto-sends with the selection) and **Ask** (requires a user instruction, appended as `{{userInput}}` to the system prompt). Both are editable in **Settings → Prompts**; seeding only runs when the prompts file is empty, so it never clobbers your catalog.
+
 **Panel keyboard shortcuts:**
 
 | Key | Action |
 | --- | --- |
-| `Esc` | Close panel (or collapse follow-up if open) |
+| `Esc` | Close panel (or collapse follow-up if open) — works the moment the panel opens; no need to click into a field first |
 | `⌘↵` | Send / Ask |
-| `⌘C` | Copy response to clipboard |
+| `↵` | Send (when the preset's user-input field is focused; `Shift+↵` inserts a newline) |
+| `⌘C` | Copy *selected* text from the response, or the whole response if nothing is selected |
 | `⌘L` | Open follow-up bar |
-| `⌘,` | Open Settings |
+| `⌘,` | Open Settings (panel stays open behind the Settings window) |
+
+**Settings → General → Window behaviour** controls where the panel appears and what happens when you click outside it:
+
+- **Panel placement on invocation**: *Near cursor* (default) · *Centered on cursor* · *Centered on screen*. All three clamp to the active screen's visible frame.
+- **When clicking outside the panel**: *Stay on top* (default, floating level until dismissed) · *Recede to background* (drops to normal window level, behaves like any Mac window) · *Close* (dismisses on click-off). Clicking into Settings (or any other of the app's own windows) never triggers the click-off behaviour.
+
+**Settings → General → Appearance** controls the panel's look:
+
+- Font size (11–18 pt).
+- **Panel theme**: *System (translucent)* default · *Light (opaque)* · *Dark (opaque)* · *Custom colors* (`#RGB`, `#RRGGBB`, or `#RRGGBBAA` for both background and text, with a live swatch). Custom mode picks a matching `ColorScheme` automatically from the background's perceived luminance so chrome (borders, chevrons, secondary labels) stays legible.
 
 If a Service entry doesn't appear in the right-click menu, see [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md#services-menu-entry-doesnt-appear).
 
@@ -54,26 +59,23 @@ It regenerates the Xcode project if `project.yml` changed, kills any running cop
 
 Then read these in order:
 
-1. [`mvp_spec.md`](mvp_spec.md) — what we're building and why.
-2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the codebase is laid out, the request pipeline, key types, threading model.
-3. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — environment setup, build, run, test, debug, log capture.
-4. [`docs/EXTENDING.md`](docs/EXTENDING.md) — recipes for adding a provider, prompt mode, or capture strategy.
-5. [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — the hard-won macOS-specific gotchas we hit during MVP development. Read this *before* you debug anything weird.
+1. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — how the codebase is laid out, the request pipeline, key types, threading model.
+2. [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — environment setup, build, run, test, debug, log capture.
+3. [`docs/EXTENDING.md`](docs/EXTENDING.md) — recipes for adding a provider, prompt preset, or capture strategy.
+4. [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — the hard-won macOS-specific gotchas this project has hit. Read this *before* you debug anything weird.
 
 ## Repository layout
 
 ```text
 text-select-llm/
 ├── README.md                  This file
-├── mvp_spec.md                Product spec (source of truth for behavior)
 ├── project.yml                XcodeGen spec; generates InlineLLMLens.xcodeproj
 ├── .gitignore
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── DEVELOPMENT.md
 │   ├── EXTENDING.md
-│   ├── TROUBLESHOOTING.md
-│   └── STATUS.md
+│   └── TROUBLESHOOTING.md
 ├── InlineLLMLens/             Application source (Swift, organized by feature module)
 │   ├── App/                   App entry point, AppDelegate, Info.plist, entitlements
 │   ├── MenuBar/               NSStatusItem + menu
@@ -133,8 +135,6 @@ Full diagrams and module-by-module narrative in [`docs/ARCHITECTURE.md`](docs/AR
 - On invocation in apps where Accessibility doesn't expose the selection, the app simulates Cmd+C to capture the highlighted text, then restores the previous pasteboard. This is on by default and can be disabled in **Settings → Capture**.
 - Local history is **off by default**; when enabled, stored as a JSON file on disk only.
 
-See [`mvp_spec.md`](mvp_spec.md) §15 for the full privacy stance.
-
 ## License
 
-Internal MVP — license TBD before any public release.
+Internal project — license TBD before any public release.
