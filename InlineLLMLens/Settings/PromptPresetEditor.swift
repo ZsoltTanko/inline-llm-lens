@@ -12,6 +12,8 @@ struct PromptPresetEditor: View {
     @State private var draft: PromptPreset
     @State private var temperatureText: String
     @State private var maxTokensText: String
+    @State private var panelWidthText: String
+    @State private var panelHeightText: String
     @State private var sampleSelection: String = "The mitochondrion is the powerhouse of the cell."
     @State private var sampleUserInput: String = ""
     @State private var showAdvanced: Bool = false
@@ -33,6 +35,8 @@ struct PromptPresetEditor: View {
         self._draft = State(initialValue: initial)
         self._temperatureText = State(initialValue: initial.temperature.map { String($0) } ?? "")
         self._maxTokensText = State(initialValue: initial.maxOutputTokens.map { String($0) } ?? "")
+        self._panelWidthText = State(initialValue: initial.panelWidth.map { String(Int($0)) } ?? "")
+        self._panelHeightText = State(initialValue: initial.panelHeight.map { String(Int($0)) } ?? "")
     }
 
     private var hotkeyName: KeyboardShortcuts.Name {
@@ -102,6 +106,16 @@ struct PromptPresetEditor: View {
                         .foregroundStyle(.red)
                         .font(.caption)
                 }
+            }
+
+            Section("Panel size") {
+                HStack {
+                    TextField("Width", text: $panelWidthText, prompt: Text("Default"))
+                    TextField("Height", text: $panelHeightText, prompt: Text("Default"))
+                }
+                Text("Per-preset width × height in points. Leave a field blank to use the default for that dimension (default: \(Int(PanelPositioner.defaultSize.width)) × \(Int(PanelPositioner.defaultSize.height))).")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Model") {
@@ -212,6 +226,8 @@ struct PromptPresetEditor: View {
         if let r = out.reasoningEffort?.trimmingCharacters(in: .whitespacesAndNewlines), r.isEmpty {
             out.reasoningEffort = nil
         }
+        out.panelWidth = Double(panelWidthText.trimmingCharacters(in: .whitespaces))
+        out.panelHeight = Double(panelHeightText.trimmingCharacters(in: .whitespaces))
         onSave(out)
     }
 }

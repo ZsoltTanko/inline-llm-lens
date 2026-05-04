@@ -13,6 +13,7 @@ final class FloatingPanelController {
     private var resignKeyObserver: NSObjectProtocol?
     private var becomeKeyObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
+    private var liveResizeEndObserver: NSObjectProtocol?
     private var settingsCancellable: AnyCancellable?
 
     init(modelStore: ModelStore, presetStore: PromptPresetStore, registry: ProviderRegistry, settings: SettingsStore) {
@@ -85,12 +86,26 @@ final class FloatingPanelController {
         ) { [weak self] _ in
             self?.applyCurrentLevel()
         }
+
+        // Persist user-initiated resizes to the active preset, so dragging
+        // the panel edges sticks across invocations. `didEndLiveResize`
+        // fires only at the end of a mouse-drag resize and notably *not*
+        // for programmatic `setFrame` calls — so our own positioning code
+        // doesn't loop back through here.
+        liveResizeEndObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didEndLiveResizeNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.persistCurrentSizeToActivePreset() }
+        }
     }
 
     deinit {
         if let o = resignKeyObserver { NotificationCenter.default.removeObserver(o) }
         if let o = becomeKeyObserver { NotificationCenter.default.removeObserver(o) }
         if let o = defaultsObserver { NotificationCenter.default.removeObserver(o) }
+        if let o = liveResizeEndObserver { NotificationCenter.default.removeObserver(o) }
     }
 
     /// Present with the default preset.
@@ -103,7 +118,11 @@ final class FloatingPanelController {
     /// own `autoSend` flag wins.
     func present(with bundle: ContextBundle, preset: PromptPreset?, autoSendOverride: Bool? = nil) {
         viewModel.reset(with: bundle, presetOverride: preset)
-        PanelPositioner.position(panel: panel, placement: settings.panelPlacement)
+        PanelPositioner.position(
+            panel: panel,
+            placement: settings.panelPlacement,
+            sizeOverride: resolvedPanelSize(for: preset)
+        )
         // Set window level + activation policy *before* `NSApp.activate(...)`
         // — activating while still `.accessory` and only flipping to
         // `.regular` afterwards (e.g. inside the becomeKey observer) makes
@@ -123,6 +142,37 @@ final class FloatingPanelController {
         if shouldAutoSend, viewModel.canSend {
             viewModel.send()
         }
+    }
+
+    /// Resolve the panel size for this invocation. Each `present(...)` call
+    /// recomputes a definite size — either the preset's per-dimension value
+    /// or the default — instead of inheriting the previous invocation's
+    /// frame. Otherwise an Explain invocation right after an Ask one would
+    /// keep Ask's 800-tall window.
+    /// Saves the panel's current size back to the currently-active preset
+    /// after a user-initiated resize. Rounded to whole points so the saved
+    /// JSON stays clean. No-op if the size already matches what's stored
+    /// (e.g. the user dragged a tiny amount that rounds to nothing) so we
+    /// don't churn the prompts file or invalidate equality elsewhere.
+    private func persistCurrentSizeToActivePreset() {
+        guard panel.isVisible else { return }
+        guard let presetID = viewModel.selectedPresetID,
+              var preset = presetStore.preset(byID: presetID) else { return }
+
+        let size = panel.frame.size
+        let newWidth = Double(size.width.rounded())
+        let newHeight = Double(size.height.rounded())
+
+        if preset.panelWidth == newWidth && preset.panelHeight == newHeight { return }
+        preset.panelWidth = newWidth
+        preset.panelHeight = newHeight
+        presetStore.update(preset)
+    }
+
+    private func resolvedPanelSize(for preset: PromptPreset?) -> NSSize {
+        let w = preset?.panelWidth ?? Double(PanelPositioner.defaultSize.width)
+        let h = preset?.panelHeight ?? Double(PanelPositioner.defaultSize.height)
+        return NSSize(width: max(200, w), height: max(160, h))
     }
 
     func close() {

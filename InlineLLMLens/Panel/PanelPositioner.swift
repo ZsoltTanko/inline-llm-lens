@@ -4,14 +4,27 @@ enum PanelPositioner {
     static let defaultSize = NSSize(width: 460, height: 380)
 
     /// Places the panel according to the user's chosen placement setting,
-    /// clamped to the visible area of the active screen.
-    static func position(panel: NSPanel, placement: SettingsStore.PanelPlacement) {
+    /// clamped to the visible area of the active screen. When `sizeOverride`
+    /// is non-nil (e.g. a per-preset size), it wins over the panel's
+    /// current frame size.
+    static func position(
+        panel: NSPanel,
+        placement: SettingsStore.PanelPlacement,
+        sizeOverride: NSSize? = nil
+    ) {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) })
             ?? NSScreen.main
         guard let screen else { return }
 
-        let size = panel.frame.size == .zero ? defaultSize : panel.frame.size
+        let size: NSSize
+        if let override = sizeOverride {
+            size = override
+        } else if panel.frame.size == .zero {
+            size = defaultSize
+        } else {
+            size = panel.frame.size
+        }
         let origin: NSPoint
 
         switch placement {

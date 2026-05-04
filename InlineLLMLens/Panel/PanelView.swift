@@ -78,6 +78,34 @@ struct PanelView: View {
                 .opacity(0)
                 .accessibilityHidden(true)
         )
+        // Font size shortcuts: ⌘= and ⌘+ both bump up (the latter is what
+        // a US-layout user actually presses); ⌘- bumps down. Clamped to
+        // `SettingsStore.panelFontSizeRange` so we never drift out of
+        // bounds. Hidden buttons rather than a `.commands` scene because
+        // this is a panel, not a document window.
+        .background(fontSizeShortcuts)
+    }
+
+    /// Hidden buttons that own the ⌘+/⌘= / ⌘- keyboard shortcuts for the
+    /// response font size. Lives in `.background(...)` so the buttons take
+    /// no layout space but still participate in the responder chain.
+    private var fontSizeShortcuts: some View {
+        ZStack {
+            Button("") { adjustFontSize(by: +1) }
+                .keyboardShortcut("=", modifiers: [.command])
+            Button("") { adjustFontSize(by: +1) }
+                .keyboardShortcut("+", modifiers: [.command])
+            Button("") { adjustFontSize(by: -1) }
+                .keyboardShortcut("-", modifiers: [.command])
+        }
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    private func adjustFontSize(by delta: Double) {
+        let range = SettingsStore.panelFontSizeRange
+        let next = (settings.panelFontSize + delta).rounded()
+        settings.panelFontSize = min(max(next, range.lowerBound), range.upperBound)
     }
 
     // MARK: - Header
@@ -194,7 +222,7 @@ struct PanelView: View {
     // MARK: - Response
 
     private var responseArea: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .bottomTrailing) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     if let preset = viewModel.selectedPreset, preset.requiresUserInput {
@@ -244,14 +272,10 @@ struct PanelView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // Floating action overlay — Send/Stop only when meaningful.
-            // Copy on hover, top-right. Keeps the canvas clean by default.
+            // Floating action overlay — copy on hover, bottom-right.
+            // Streaming is implicitly stopped by closing the panel
+            // (Esc / ✕); no in-canvas stop button.
             HStack(spacing: 4) {
-                if viewModel.isStreaming {
-                    smallPill(label: "Stop", system: "stop.fill") {
-                        viewModel.cancelStreaming()
-                    }
-                }
                 if !viewModel.streamingText.isEmpty {
                     Button {
                         copyResponse()
@@ -270,7 +294,7 @@ struct PanelView: View {
                     .onHover { copyHover = $0 }
                 }
             }
-            .padding(.top, 6)
+            .padding(.bottom, 6)
             .padding(.trailing, 8)
         }
         // Hidden ⌘↵ shortcut so Cmd+Return always sends, even with no visible button.
@@ -309,23 +333,6 @@ struct PanelView: View {
             .disabled(!viewModel.canSend)
         }
         .padding(.top, 4)
-    }
-
-    private func smallPill(label: String, system: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) {
-                Image(systemName: system).font(.system(size: 9, weight: .medium))
-                Text(label).font(.system(size: 10, weight: .medium))
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.primary.opacity(0.08))
-            )
-            .foregroundStyle(.primary)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Error

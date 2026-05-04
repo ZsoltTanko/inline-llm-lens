@@ -34,6 +34,13 @@ struct PromptPreset: Identifiable, Codable, Equatable, Hashable {
     var pinnedInDropdown: Bool
     var sortOrder: Int
 
+    /// Optional per-preset panel size in points. When `nil`, falls back to
+    /// `PanelPositioner.defaultSize`. Lets a "long-form translation" preset
+    /// open a tall panel while a "quick lookup" preset stays compact.
+    /// Both must be set to take effect — a single dimension is ignored.
+    var panelWidth: Double?
+    var panelHeight: Double?
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -47,7 +54,9 @@ struct PromptPreset: Identifiable, Codable, Equatable, Hashable {
         maxOutputTokens: Int? = nil,
         reasoningEffort: String? = nil,
         pinnedInDropdown: Bool = true,
-        sortOrder: Int = 0
+        sortOrder: Int = 0,
+        panelWidth: Double? = nil,
+        panelHeight: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -62,6 +71,8 @@ struct PromptPreset: Identifiable, Codable, Equatable, Hashable {
         self.reasoningEffort = reasoningEffort
         self.pinnedInDropdown = pinnedInDropdown
         self.sortOrder = sortOrder
+        self.panelWidth = panelWidth
+        self.panelHeight = panelHeight
     }
 }
 
