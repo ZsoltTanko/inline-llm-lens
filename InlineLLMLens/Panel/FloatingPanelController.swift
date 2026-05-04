@@ -104,7 +104,13 @@ final class FloatingPanelController {
     func present(with bundle: ContextBundle, preset: PromptPreset?, autoSendOverride: Bool? = nil) {
         viewModel.reset(with: bundle, presetOverride: preset)
         PanelPositioner.position(panel: panel, placement: settings.panelPlacement)
-        applyCurrentLevel()
+        // Set window level + activation policy *before* `NSApp.activate(...)`
+        // — activating while still `.accessory` and only flipping to
+        // `.regular` afterwards (e.g. inside the becomeKey observer) makes
+        // the app appear in Cmd-Tab but never actually claim frontmost
+        // status, so the OS-level MRU still has the source app at slot 1.
+        applyPanelLevelForCurrentMode()
+        applyActivationPolicyForCurrentMode(panelWillBecomeVisible: true)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
 
@@ -122,6 +128,7 @@ final class FloatingPanelController {
     func close() {
         viewModel.cancelStreaming()
         panel.orderOut(nil)
+        restoreAccessoryPolicyIfAppropriate()
     }
 
     func showPermissionsCheck() {
@@ -137,15 +144,30 @@ final class FloatingPanelController {
         alert.runModal()
     }
 
+    /// True when the panel is currently visible in a mode that requires the
+    /// app to remain `.regular` (currently: `Recede to background`). Lets
+    /// `AppDelegate` skip the post-Settings revert to `.accessory` so the
+    /// panel doesn't lose its Cmd-Tab entry while it's still alive.
+    var requiresRegularActivationPolicy: Bool {
+        guard panel.isVisible else { return false }
+        switch settings.panelClickOffBehavior {
+        case .sendToBack, .stayOnTop: return true
+        case .closePanel:             return false
+        }
+    }
+
     // MARK: - Click-off behaviour
 
-    /// Apply `panel.level` based on the current setting. Called on present,
-    /// on `didBecomeKey`, and whenever `SettingsStore` changes.
+    /// React to live setting changes (and `didBecomeKey`) — only meaningful
+    /// while the panel is visible; offscreen panels get their level + policy
+    /// configured by `present(...)` directly.
     private func applyCurrentLevel() {
-        guard panel.isVisible else {
-            panel.level = settings.panelClickOffBehavior == .stayOnTop ? .floating : .normal
-            return
-        }
+        guard panel.isVisible else { return }
+        applyPanelLevelForCurrentMode()
+        applyActivationPolicyForCurrentMode(panelWillBecomeVisible: false)
+    }
+
+    private func applyPanelLevelForCurrentMode() {
         switch settings.panelClickOffBehavior {
         case .stayOnTop, .closePanel:
             // `.closePanel` panels are still "on top" while they're alive —
@@ -153,6 +175,46 @@ final class FloatingPanelController {
             panel.level = .floating
         case .sendToBack:
             panel.level = .normal
+        }
+    }
+
+    /// Promote the app to `.regular` while a panel that's intended to
+    /// outlive a click-off is alive (`Recede to background` and `Stay on
+    /// top`), so it gets a Dock + Cmd-Tab entry and the user can always
+    /// surface it again. `Close` stays `.accessory` because that panel
+    /// dismisses itself on click-off and never needs to be re-fronted.
+    /// Settings manages its own policy switch in `AppDelegate`.
+    ///
+    /// `panelWillBecomeVisible` lets `present(...)` apply the policy
+    /// *before* the panel is actually visible — critical because
+    /// `NSApp.activate(...)` must happen at the target policy or the app
+    /// won't take the frontmost slot in the OS MRU.
+    private func applyActivationPolicyForCurrentMode(panelWillBecomeVisible: Bool) {
+        let shouldBeRegular: Bool
+        if panelWillBecomeVisible || panel.isVisible {
+            switch settings.panelClickOffBehavior {
+            case .sendToBack, .stayOnTop: shouldBeRegular = true
+            case .closePanel:             shouldBeRegular = false
+            }
+        } else {
+            shouldBeRegular = false
+        }
+
+        if shouldBeRegular {
+            if NSApp.activationPolicy() != .regular {
+                NSApp.setActivationPolicy(.regular)
+            }
+        } else {
+            restoreAccessoryPolicyIfAppropriate()
+        }
+    }
+
+    /// Drop back to `.accessory` when the panel is gone, unless the
+    /// Settings window is open (which also requires `.regular`).
+    private func restoreAccessoryPolicyIfAppropriate() {
+        guard !SettingsWindowController.shared.isVisible else { return }
+        if NSApp.activationPolicy() != .accessory {
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 

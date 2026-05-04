@@ -23,7 +23,13 @@ final class FloatingPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
-            styleMask: [.borderless, .resizable, .fullSizeContentView, .nonactivatingPanel],
+            // Intentionally NOT `.nonactivatingPanel`: a non-activating
+            // panel never enters the system's active-app MRU list, so even
+            // after `NSApp.activate(...)` brings us frontmost, Cmd+Tab's
+            // default highlight (the previously-active app) skips past us.
+            // Selection capture has already completed by the time the panel
+            // is shown, so there's no reason to suppress activation.
+            styleMask: [.borderless, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )

@@ -140,6 +140,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // defer the visibility check one runloop tick.
             DispatchQueue.main.async {
                 guard !SettingsWindowController.shared.isVisible else { return }
+                // A `Recede to background` panel that's still alive needs
+                // `.regular` to stay reachable via Cmd-Tab — don't yank the
+                // policy out from under it just because Settings closed.
+                if self?.panelController.requiresRegularActivationPolicy == true { return }
                 NSApp.setActivationPolicy(.accessory)
                 if let obs = self?.settingsCloseObserver {
                     NotificationCenter.default.removeObserver(obs)
