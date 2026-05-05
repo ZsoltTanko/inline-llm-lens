@@ -130,6 +130,7 @@ If Settings still won't open, check:
 
 - The activation-policy switch (`NSApp.setActivationPolicy(.regular)`) must run before `SettingsWindowController.shared.show()`.
 - `observeSettingsCloseOnce()` must still be wired; otherwise the app will stay in `.regular` after you close Settings (a cosmetic issue — Dock icon lingers — not a blocker).
+- The settings-close handler now also consults `panelController.requiresRegularActivationPolicy` and skips the revert when the floating panel is still alive in *Stay on top* or *Recede to background*. If you delete that check, closing Settings while the panel is up will silently drop the panel's Cmd-Tab entry.
 
 ### Fix in code
 
@@ -159,6 +160,30 @@ If you need to add Esc-to-close or similar window-level behaviour, do it on the 
 **Do not** revert the activation policy in `applicationDidResignActive`. We tried — it races with window presentation and silently kills the Settings window before it can show. Use the explicit `willCloseNotification` observer instead.
 
 **Do** leave the floating panel up while opening Settings — they are designed as sibling windows. The panel's click-off observer in `FloatingPanelController` explicitly ignores `resignKey` when another of our own windows (Settings, Onboarding, an alert) becomes key, so none of the three panel click-off behaviours (stay on top / recede / close) will fire from opening Settings. If your Settings window opens and *appears* to immediately vanish, it's likely being sent behind the `.floating`-level panel; bring focus back to Settings via Cmd-Tab or click its titlebar.
+
+---
+
+## Panel doesn't appear in Cmd+Tab, or "Recede to background" behaves like "Close"
+
+### Symptom
+
+You set click-off to *Stay on top* or *Recede to background*, invoke the panel, and either (a) the app doesn't show up in Cmd+Tab at all, (b) it shows up but Cmd+Tab from the panel highlights the original source app instead of slot 2 of the previous-app history, or (c) clicking outside the panel in *Recede to background* mode appears to close it (it actually drops behind everything with no way back).
+
+### Cause
+
+Three coupled root causes, all of them subtle. Read carefully before changing this code.
+
+1. **Activation policy must be `.regular` *before* `NSApp.activate(...)`, not after.** Activating an `.accessory` app and only flipping to `.regular` afterwards (e.g. inside a `didBecomeKey` observer that fires after `makeKeyAndOrderFront`) leaves the app in `.regular` but never claims the OS-level frontmost slot in the MRU list — it shows up in Cmd+Tab but Cmd+Tab from inside the panel skips past it. `FloatingPanelController.present(...)` calls `applyActivationPolicyForCurrentMode(panelWillBecomeVisible: true)` *before* `NSApp.activate(...)` for exactly this reason. Don't move the policy switch later.
+2. **The panel must not be `.nonactivatingPanel`.** Non-activating panels never enter the system's active-app MRU list, full stop. Even with explicit `NSApp.activate(...)` they don't count as "the app became frontmost". Selection capture has already completed by the time `present(...)` runs (capture happens earlier in `invokeFromHotkey` / Services), so there's no reason to suppress activation. The style mask is `[.borderless, .resizable, .fullSizeContentView]`.
+3. **`Recede to background` requires `.regular` policy to be reachable.** Under `.accessory`, `panel.level = .normal` works mechanically — the panel is technically still alive — but the app has no Dock icon and no Cmd+Tab entry, so the panel gets buried behind whatever app the user clicked into with no way to surface it. Indistinguishable from "Close" from the user's POV. `Stay on top` and `Recede to background` therefore both promote to `.regular` while the panel is alive.
+
+### Fix / how to keep it fixed
+
+In `FloatingPanelController.present(...)`, the order is fixed: `viewModel.reset` → `PanelPositioner.position(... sizeOverride:)` → `applyPanelLevelForCurrentMode()` → `applyActivationPolicyForCurrentMode(panelWillBecomeVisible: true)` → `NSApp.activate(ignoringOtherApps: true)` → `panel.makeKeyAndOrderFront(nil)`. The `panelWillBecomeVisible: true` argument lets `applyActivationPolicyForCurrentMode` fire before `panel.isVisible` is true; the same method, called from `applyCurrentLevel()` (e.g. via the `didBecomeKey` observer), passes `false` and guards on `panel.isVisible` so it doesn't churn policy at the wrong time.
+
+`requiresRegularActivationPolicy` exposes "panel is alive in a mode that needs `.regular`" so `AppDelegate.observeSettingsCloseOnce()` can avoid yanking the policy when Settings closes mid-stream.
+
+If a regression here surfaces, do **not** add `canBecomeMain = true` to the panel as a guess (we tried; it isn't the cause). The fix is in the activation-policy *ordering*, not the window class flags.
 
 ---
 

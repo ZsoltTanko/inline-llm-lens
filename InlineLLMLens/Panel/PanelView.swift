@@ -14,6 +14,7 @@ import AppKit
 struct PanelView: View {
     @ObservedObject var viewModel: PanelViewModel
     @ObservedObject private var settings = SettingsStore.shared
+    @ObservedObject private var queryHistory = QueryHistoryStore.shared
     var onClose: () -> Void
 
     @State private var selectionExpanded: Bool = false
@@ -178,45 +179,102 @@ struct PanelView: View {
     @ViewBuilder
     private var selectionPreview: some View {
         if !viewModel.bundle.selectedText.isEmpty {
-            Button {
-                selectionExpanded.toggle()
-            } label: {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: selectionExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 2)
-                    Text(viewModel.bundle.selectedText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(selectionExpanded ? nil : 1)
-                        .truncationMode(.tail)
-                        .multilineTextAlignment(.leading)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+            // Toggle-to-expand preview + trailing history menu as siblings
+            // so the menu doesn't sit inside another Button (SwiftUI bans
+            // nested buttons). The menu lives in the same row's background
+            // strip and steals only its own ~18pt of width.
+            HStack(spacing: 4) {
+                Button {
+                    selectionExpanded.toggle()
+                } label: {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: selectionExpanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 2)
+                        Text(viewModel.bundle.selectedText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(selectionExpanded ? nil : 1)
+                            .truncationMode(.tail)
+                            .multilineTextAlignment(.leading)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.04))
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                queryHistoryMenu
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(Color.primary.opacity(0.04))
         } else if !AccessibilityCapture.isTrusted || viewModel.manualSelectedText.isEmpty {
             // No selection captured and either AX denied or the user hasn't
             // typed anything yet — give them a tiny inline editor.
-            VStack(alignment: .leading, spacing: 2) {
-                Text(emptyStateMessage)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                TextField("Type or paste text…", text: $viewModel.manualSelectedText, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                    .lineLimit(1...4)
-                    .focused($manualSelectionFocused)
+            HStack(alignment: .top, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(emptyStateMessage)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    TextField("Type or paste text…", text: $viewModel.manualSelectedText, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .lineLimit(1...4)
+                        .focused($manualSelectionFocused)
+                }
+                queryHistoryMenu
+                    .padding(.top, 2)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
         }
+    }
+
+    /// Compact dropdown listing recent queries for the active preset. Hidden
+    /// when history is disabled (`queryHistoryLimit == 0`) or the preset
+    /// has no recorded entries yet, so it doesn't take visual space when
+    /// it would have nothing to offer.
+    @ViewBuilder
+    private var queryHistoryMenu: some View {
+        let entries = queryHistory.recent(
+            presetID: viewModel.selectedPresetID,
+            limit: settings.queryHistoryLimit
+        )
+        if !entries.isEmpty {
+            Menu {
+                ForEach(entries) { entry in
+                    Button(historyMenuLabel(entry)) {
+                        viewModel.applyHistoryEntry(entry)
+                    }
+                }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Recent queries for this preset")
+        }
+    }
+
+    /// Truncate long entries so the menu stays a glance-readable strip
+    /// rather than wrapping. Whitespace collapsed for the same reason.
+    /// Prefixed with the user-input field when the preset captured one,
+    /// so two history items sharing a selection but with different
+    /// follow-on questions are distinguishable at a glance.
+    private func historyMenuLabel(_ entry: QueryHistoryEntry) -> String {
+        let base = entry.userInput.isEmpty
+            ? entry.text
+            : "\(entry.userInput) — \(entry.text)"
+        let single = base.replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "  ", with: " ")
+        if single.count <= 60 { return single }
+        return String(single.prefix(60)) + "…"
     }
 
     // MARK: - Response
@@ -226,15 +284,31 @@ struct PanelView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     if let preset = viewModel.selectedPreset, preset.requiresUserInput {
+                        // `.plain` (not `.roundedBorder`) because the
+                        // rounded-border style silently ignores
+                        // `axis: .vertical` and refuses to wrap, leaving
+                        // long input scrolling off the right edge. We
+                        // draw an equivalent border ourselves below.
                         TextField(
                             preset.userInputPlaceholder ?? "Instruction…",
                             text: $viewModel.userInput,
                             axis: .vertical
                         )
-                        .textFieldStyle(.roundedBorder)
-                        .lineLimit(1...3)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...6)
                         .font(.system(size: fontSize))
                         .focused($presetInputFocused)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.primary.opacity(0.05))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5)
+                        )
                         // Enter sends, Shift+Enter inserts a newline (the
                         // default behaviour for a vertical-axis TextField).
                         .onKeyPress(.return) {

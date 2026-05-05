@@ -28,10 +28,12 @@ Two prompt presets ship seeded on first launch — **Explain** (auto-sends with 
 
 | Key | Action |
 | --- | --- |
-| `Esc` | Close panel (or collapse follow-up if open) — works the moment the panel opens; no need to click into a field first |
+| `Esc` | Close panel (or collapse follow-up if open) — works the moment the panel opens; no need to click into a field first. Closing the panel also cancels any in-flight LLM stream. |
 | `⌘↵` | Send / Ask |
 | `↵` | Send (when the preset's user-input field is focused; `Shift+↵` inserts a newline) |
 | `⌘C` | Copy *selected* text from the response, or the whole response if nothing is selected |
+| `⌘+` / `⌘=` | Increase response font size (clamped to the 11–18 pt range) |
+| `⌘-` | Decrease response font size |
 | `⌘L` | Open follow-up bar |
 | `⌘,` | Open Settings (panel stays open behind the Settings window) |
 
@@ -39,6 +41,12 @@ Two prompt presets ship seeded on first launch — **Explain** (auto-sends with 
 
 - **Panel placement on invocation**: *Near cursor* (default) · *Centered on cursor* · *Centered on screen*. All three clamp to the active screen's visible frame.
 - **When clicking outside the panel**: *Stay on top* (default, floating level until dismissed) · *Recede to background* (drops to normal window level, behaves like any Mac window) · *Close* (dismisses on click-off). Clicking into Settings (or any other of the app's own windows) never triggers the click-off behaviour.
+- For *Stay on top* and *Recede to background*, the app temporarily promotes itself to a regular activation policy while the panel is alive, so it appears in **Cmd+Tab** and you can always bring it back to the foreground. *Close* keeps the lighter agent (`LSUIElement`) policy since the panel dismisses itself anyway.
+- Click-off only changes window level/focus — it never cancels an in-flight LLM stream. The stream is cancelled only when you actually close the panel (Esc / ✕) or invoke a new query.
+
+**Settings → General → History** controls a per-preset *recent queries* dropdown that appears in the panel next to the captured selection (small clock icon). Picking an entry restores the panel exactly as you saw it for that invocation — selection text, instruction field, model, and the streamed response — without re-running the LLM. Hit ⌘↵ if you want a fresh response. The integer setting caps how many entries are kept per preset (0 disables recording and hides the dropdown). Stored only on this Mac.
+
+**Per-preset panel size.** In **Settings → Prompts → Edit**, each preset has an optional *Panel size* (width × height in points). Either dimension can be set independently — an unset one falls back to the default 460×380. Dragging the panel's edge to resize automatically saves the new size back to the active preset, so each preset opens at the size you last left it.
 
 **Settings → General → Appearance** controls the panel's look:
 

@@ -148,12 +148,15 @@ Capture method, frontmost app, and preset/model details are no longer shown in t
 
 | Key | Action |
 | --- | --- |
-| `Esc` | Close panel (collapses follow-up first if open). Handled at the `NSPanel` level via `cancelOperation(_:)`, so it fires immediately after the panel is shown — no "click a text field to activate Esc" step. |
+| `Esc` | Close panel (collapses follow-up first if open). Handled at the `NSPanel` level via `cancelOperation(_:)`, so it fires immediately after the panel is shown — no "click a text field to activate Esc" step. Closing also cancels any in-flight LLM stream. |
 | `⌘↵` | Send / Ask |
 | `↵` | Send when the preset's user-input field is focused. `Shift+↵` inserts a newline. |
 | `⌘C` | Copy *selected* text if a selection is active inside the Markdown view; otherwise falls back to copying the full response. Panel overrides `performKeyEquivalent(with:)` and dispatches `copy:` down the responder chain first. |
+| `⌘+` / `⌘=` / `⌘-` | Bump `SettingsStore.panelFontSize` ± 1 pt, clamped to `panelFontSizeRange` (11–18 pt). Hidden zero-opacity buttons in `PanelView.fontSizeShortcuts`. Both `=` (US natural) and `+` (with shift) are bound. |
 | `⌘L` | Toggle follow-up bar |
 | `⌘,` | Open Settings (panel stays open behind it) |
+
+**No in-canvas Stop button.** Streaming is implicitly cancelled when the panel closes (Esc / ✕). Click-off in the *Stay on top* and *Recede to background* modes deliberately does **not** cancel the stream — the stream survives focus changes and is consumable when you bring the panel back via Cmd+Tab.
 
 Settings window also supports `Esc` to close (private `SettingsWindow` subclass overrides `cancelOperation(_:)` → `performClose(nil)`).
 
@@ -163,7 +166,10 @@ Settings window also supports `Esc` to close (private `SettingsWindow` subclass 
 # Configured models
 cat ~/Library/Application\ Support/InlineLLMLens/models.json | jq
 
-# Optional history (only if user enabled it)
+# Per-preset query history (powers the panel's recent-queries dropdown)
+cat ~/Library/Application\ Support/InlineLLMLens/query-history.json | jq
+
+# Full opt-in history (only present when the toggle in Settings → General is on)
 cat ~/Library/Application\ Support/InlineLLMLens/history.json | jq
 
 # UserDefaults

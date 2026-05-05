@@ -22,7 +22,14 @@ final class SettingsStore: ObservableObject {
         static let panelAppearanceMode = "settings.panelAppearanceMode"
         static let panelCustomBackgroundHex = "settings.panelCustomBackgroundHex"
         static let panelCustomTextHex = "settings.panelCustomTextHex"
+        static let queryHistoryLimit = "settings.queryHistoryLimit"
     }
+
+    /// Default cap for the per-preset query history dropdown shown in the
+    /// panel. Small enough to keep the menu glanceable; users can raise it
+    /// up to `queryHistoryLimitRange.upperBound` or set 0 to disable.
+    static let defaultQueryHistoryLimit: Int = 10
+    static let queryHistoryLimitRange: ClosedRange<Int> = 0...50
 
     /// Fallback hex values for the custom-colors mode.
     static let defaultPanelCustomBackgroundHex = "#1E1E1E"
@@ -121,7 +128,8 @@ final class SettingsStore: ObservableObject {
             Keys.panelPlacement: PanelPlacement.nearMouse.rawValue,
             Keys.panelAppearanceMode: PanelAppearanceMode.system.rawValue,
             Keys.panelCustomBackgroundHex: SettingsStore.defaultPanelCustomBackgroundHex,
-            Keys.panelCustomTextHex: SettingsStore.defaultPanelCustomTextHex
+            Keys.panelCustomTextHex: SettingsStore.defaultPanelCustomTextHex,
+            Keys.queryHistoryLimit: SettingsStore.defaultQueryHistoryLimit
         ])
     }
 
@@ -209,6 +217,24 @@ final class SettingsStore: ObservableObject {
     var panelCustomTextHex: String {
         get { defaults.string(forKey: Keys.panelCustomTextHex) ?? SettingsStore.defaultPanelCustomTextHex }
         set { defaults.set(newValue, forKey: Keys.panelCustomTextHex); objectWillChange.send() }
+    }
+
+    var queryHistoryLimit: Int {
+        get {
+            let raw = defaults.integer(forKey: Keys.queryHistoryLimit)
+            // `integer(forKey:)` returns 0 for both "absent" and "explicitly 0".
+            // The registered default disambiguates absent → default; explicit
+            // 0 means the user disabled history.
+            if defaults.object(forKey: Keys.queryHistoryLimit) == nil {
+                return SettingsStore.defaultQueryHistoryLimit
+            }
+            return min(max(raw, SettingsStore.queryHistoryLimitRange.lowerBound),
+                       SettingsStore.queryHistoryLimitRange.upperBound)
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.queryHistoryLimit)
+            objectWillChange.send()
+        }
     }
 
     var panelClickOffBehavior: PanelClickOffBehavior {

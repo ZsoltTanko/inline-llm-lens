@@ -80,24 +80,33 @@ Example: a "browser DOM via AppleScript" strategy for Safari/Chrome.
 
 ## Add a new setting
 
-For a typed boolean / string / enum setting:
+For a typed boolean / string / enum / int setting:
 
 1. **Add a key** to `SettingsStore.Keys` in `InlineLLMLens/Storage/SettingsStore.swift`.
 2. **Register a default** in `SettingsStore.init()`.
-3. **Add a typed accessor** on `SettingsStore` (mirror the existing pattern — `objectWillChange.send()` after writing).
-4. **Bind a UI control** in the appropriate `Settings/*View.swift` using either `@AppStorage(SettingsStore.Keys.foo)` (for SwiftUI-only views) or a `Binding(get:set:)` against the store.
+3. **Add a typed accessor** on `SettingsStore` (mirror the existing pattern — `objectWillChange.send()` after writing). For `Int` settings where `0` is a valid user choice (e.g. "off"), branch on `defaults.object(forKey:) == nil` to disambiguate "not set yet" from "set to 0" — `defaults.integer(forKey:)` collapses both to `0` otherwise. `queryHistoryLimit` is the example.
+4. **Bind a UI control** in the appropriate `Settings/*View.swift` using either `@AppStorage(SettingsStore.Keys.foo)` (for SwiftUI-only views) or a `Binding(get:set:)` against the store. `Stepper(value:in:)` paired with a side-display `Text` is a good pattern for bounded integers.
 5. **Use the setting** wherever it changes behavior. Tests for any logic gated by the setting belong in the relevant module's test file.
 
-## Add a new field to `ModelConfig`
+## Add a new field to `ModelConfig` or `PromptPreset`
 
-`ModelConfig` is `Codable` and persisted to JSON. Optional fields are backward-compatible by default.
+Both are `Codable` and persisted to JSON. Optional fields are backward-compatible by default — Swift's synthesized `init(from:)` for an `Optional` property `decodeIfPresent`s, so older catalogs decode cleanly without bumping a version.
 
-1. **Add the field** as `Optional` in `InlineLLMLens/Models/ModelConfig.swift`. Update the `init` defaults.
-2. **Surface it in the editor** — add a `@State` and a `TextField` / `Toggle` in `ModelsSettingsView.ModelEditor`. Map it back into `draft` on Save.
-3. **Use it downstream** — usually inside `OpenAICompatibleClient.buildRequest` (or your new provider). Send the field only when non-empty so non-supporting models aren't broken.
-4. **Write a test** if the field changes wire-format output. The `URLProtocol` stub in `OpenAICompatibleClientTests` can capture the request body and assert against it.
+1. **Add the field** as `Optional` in the struct (`InlineLLMLens/Models/ModelConfig.swift` or `InlineLLMLens/Prompts/PromptPreset.swift`). Update the `init` defaults.
+2. **Surface it in the editor** — add a `@State` and a `TextField` / `Toggle` in the relevant editor (`ModelsSettingsView.ModelEditor` or `PromptPresetEditor`). Map it back into `draft` on Save. For numeric fields parsed from a string-backed `TextField`, use the existing `_panelWidthText` / `_panelHeightText` pattern as a template.
+3. **Use it downstream** — usually inside `OpenAICompatibleClient.buildRequest` (or your new provider) for `ModelConfig`, or inside `FloatingPanelController` / `PanelViewModel` for `PromptPreset`. Send / apply the field only when non-empty so non-supporting models or older presets aren't broken.
+4. **Write a test** if the field changes wire-format output or panel behaviour. The `URLProtocol` stub in `OpenAICompatibleClientTests` can capture the request body and assert against it.
 
-`reasoningEffort` is the canonical example — search the codebase for it to see all the touch points.
+`reasoningEffort` (on `ModelConfig`) and `panelWidth` / `panelHeight` (on `PromptPreset`) are the canonical examples — search the codebase for them to see all the touch points.
+
+## Add a new field to `QueryHistoryEntry`
+
+The history dropdown's "repaint the panel exactly as it was" promise gets richer the more state we record. To add a new field (e.g. `temperature` per-invocation):
+
+1. Add the property as `Optional` to `QueryHistoryEntry` in `InlineLLMLens/Storage/QueryHistoryStore.swift`. Update the memberwise `init` and `init(from:)` (the custom decoder backfills `nil`/empty for missing fields on older entries — keep that pattern).
+2. Add the corresponding parameter to `QueryHistoryStore.record(...)`.
+3. Pass the value at the recording site (`PanelViewModel.runRequest` success branch).
+4. Restore it in `PanelViewModel.applyHistoryEntry(_:)` — guard against now-invalid values (e.g. a model UUID that's been deleted from the catalog) and fall back to the current selection rather than nilling it out.
 
 ## Change the default hotkey
 

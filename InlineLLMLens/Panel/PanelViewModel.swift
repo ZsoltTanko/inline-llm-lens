@@ -137,6 +137,27 @@ final class PanelViewModel: ObservableObject {
         runRequest(model: model, preset: preset)
     }
 
+    /// Restore the panel to the exact state it was in for a previous
+    /// invocation: the captured selection, the preset's user-input field,
+    /// and the streamed response — without re-running the LLM. The user
+    /// can still hit ⌘↵ to re-ask, which will produce a fresh response.
+    func applyHistoryEntry(_ entry: QueryHistoryEntry) {
+        cancelStreaming()
+        bundle.selectedText = entry.text
+        manualSelectedText = ""
+        userInput = entry.userInput
+        streamingText = entry.responseText
+        lastError = nil
+        conversation = []
+        // Restore the model used for the original invocation when it's
+        // still in the catalog. If it was deleted since, leave the
+        // current selection alone rather than nilling it out.
+        if let modelID = entry.modelID,
+           modelStore.models.contains(where: { $0.id == modelID }) {
+            selectedModelID = modelID
+        }
+    }
+
     func closeFollowUp() {
         isFollowUpOpen = false
         followUpInput = ""
@@ -202,6 +223,14 @@ final class PanelViewModel: ObservableObject {
                     self.conversation.append(ChatMessage(role: .assistant, content: self.streamingText))
                     self.isStreaming = false
                     self.recordHistory(model: model, preset: preset)
+                    QueryHistoryStore.shared.record(
+                        text: self.effectiveSelectedText,
+                        userInput: self.userInput,
+                        responseText: self.streamingText,
+                        modelID: model.id,
+                        presetID: preset.id,
+                        limit: self.settings.queryHistoryLimit
+                    )
                 }
             } catch is CancellationError {
                 await MainActor.run { self.isStreaming = false }

@@ -6,6 +6,7 @@ struct GeneralSettingsView: View {
     @AppStorage(SettingsStore.Keys.autoSendOnInvocation) private var autoSend: Bool = true
     @AppStorage(SettingsStore.Keys.streamResponses) private var streamResponses: Bool = true
     @AppStorage(SettingsStore.Keys.historyEnabled) private var historyEnabled: Bool = false
+    @AppStorage(SettingsStore.Keys.queryHistoryLimit) private var queryHistoryLimit: Int = SettingsStore.defaultQueryHistoryLimit
     @AppStorage(SettingsStore.Keys.launchAtLogin) private var launchAtLogin: Bool = false
     @AppStorage(SettingsStore.Keys.panelFontSize) private var panelFontSize: Double = SettingsStore.defaultPanelFontSize
     @AppStorage(SettingsStore.Keys.panelClickOffBehavior) private var clickOffBehaviorRaw: String = SettingsStore.PanelClickOffBehavior.stayOnTop.rawValue
@@ -95,8 +96,24 @@ struct GeneralSettingsView: View {
             }
 
             Section("History") {
-                Toggle("Keep local history (off by default)", isOn: $historyEnabled)
-                Text("History is stored only on this Mac. No sync, no analytics. Each entry snapshots the resolved system prompt and user message so editing presets later does not rewrite history.")
+                Stepper(
+                    value: $queryHistoryLimit,
+                    in: SettingsStore.queryHistoryLimitRange
+                ) {
+                    HStack {
+                        Text("Recent queries per preset")
+                        Spacer()
+                        Text(queryHistoryLimit == 0 ? "Off" : "\(queryHistoryLimit)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("Powers the small clock-icon dropdown next to the captured selection in the panel. Set to 0 to disable. Stored only on this Mac.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Keep full local history (off by default)", isOn: $historyEnabled)
+                Text("Separate from the recent-queries dropdown above. When on, every invocation snapshots the resolved system prompt, user message, and full response to disk. No sync, no analytics.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
