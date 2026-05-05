@@ -116,6 +116,13 @@ struct PanelView: View {
             chipPreset
             chipModel
             Spacer(minLength: 4)
+            // For direct-prompt presets the dedicated selection-preview row
+            // is suppressed (there is no selection), so surface the per-preset
+            // history dropdown in the header instead — otherwise it would
+            // have nowhere to live.
+            if let preset = viewModel.selectedPreset, !preset.capturesSelection {
+                queryHistoryMenu
+            }
             statusDot
             iconButton(system: "gearshape", help: "Settings (⌘,)") {
                 AppDelegate.openSettings()
@@ -178,7 +185,13 @@ struct PanelView: View {
 
     @ViewBuilder
     private var selectionPreview: some View {
-        if !viewModel.bundle.selectedText.isEmpty {
+        if let preset = viewModel.selectedPreset, !preset.capturesSelection {
+            // Direct-prompt presets have no selection concept at all. Don't
+            // render anything here — the user-input field that doubles as
+            // the LLM's user message lives in `responseArea`, and the
+            // history dropdown lives in the header for this mode.
+            EmptyView()
+        } else if !viewModel.bundle.selectedText.isEmpty {
             // Toggle-to-expand preview + trailing history menu as siblings
             // so the menu doesn't sit inside another Button (SwiftUI bans
             // nested buttons). The menu lives in the same row's background
@@ -235,12 +248,16 @@ struct PanelView: View {
     /// when history is disabled (`queryHistoryLimit == 0`) or the preset
     /// has no recorded entries yet, so it doesn't take visual space when
     /// it would have nothing to offer.
-    @ViewBuilder
-    private var queryHistoryMenu: some View {
-        let entries = queryHistory.recent(
+    private var queryHistoryEntriesForActivePreset: [QueryHistoryEntry] {
+        queryHistory.recent(
             presetID: viewModel.selectedPresetID,
             limit: settings.queryHistoryLimit
         )
+    }
+
+    @ViewBuilder
+    private var queryHistoryMenu: some View {
+        let entries = queryHistoryEntriesForActivePreset
         if !entries.isEmpty {
             Menu {
                 ForEach(entries) { entry in
@@ -295,10 +312,24 @@ struct PanelView: View {
                             axis: .vertical
                         )
                         .textFieldStyle(.plain)
-                        .lineLimit(1...6)
+                        // Generous upper bound — direct-prompt mode is
+                        // often used with multi-paragraph prompts and the
+                        // outer ScrollView can scroll past the field if
+                        // it ever does run out of vertical space.
+                        .lineLimit(1...30)
                         .font(.system(size: fontSize))
                         .focused($presetInputFocused)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        // Without this, a vertical-axis TextField sitting
+                        // inside a ScrollView reports a single-line height
+                        // for its intrinsic size and then scrolls its own
+                        // content internally as the user types. The cursor
+                        // stays visible but earlier lines clip off the top
+                        // of the visible field. `fixedSize(vertical:)`
+                        // forces the field to claim its full natural
+                        // height so the parent ScrollView (not the field)
+                        // owns any overflow scrolling.
+                        .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 4)
                         .background(

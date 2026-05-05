@@ -11,6 +11,12 @@ final class PromptPresetStore: ObservableObject {
     private let fileURL: URL
     private let defaults: UserDefaults
     private let defaultsKey = "InlineLLMLens.defaultPresetID"
+    /// Tracks which factory seeds (by stable name) have ever been offered
+    /// to this catalog. Lets us add *new* factory seeds in later releases
+    /// without re-installing seeds the user has explicitly deleted. The
+    /// value is a JSON-encoded `[String]` (rather than a `Set` directly)
+    /// because `UserDefaults` only round-trips plist-friendly types.
+    private let installedSeedsKey = "InlineLLMLens.installedFactorySeedNames"
 
     init(fileURL: URL? = nil, defaults: UserDefaults = .standard, seedIfEmpty: Bool = true) {
         self.defaults = defaults
@@ -39,10 +45,66 @@ final class PromptPresetStore: ObservableObject {
                 defaultPresetID = first.id
                 defaults.set(first.id.uuidString, forKey: defaultsKey)
             }
+            markFactorySeedsInstalled(seeds.map { $0.name })
             save()
+        } else if seedIfEmpty {
+            installNewFactorySeedsIfNeeded()
         }
         if defaultPresetID == nil {
             defaultPresetID = presets.first?.id
+        }
+    }
+
+    /// Catalog already exists. Install any factory seed (by stable name)
+    /// that has never been offered to this catalog before *and* isn't
+    /// already present under that name. The two checks together mean:
+    ///
+    /// - Users who upgrade from a version that didn't ship a given seed
+    ///   still receive it on next launch.
+    /// - Seeds the user later deleted are *not* re-installed — once a
+    ///   name is recorded as "offered", we never offer it again.
+    /// - The catalog is never duplicated. On first migration the
+    ///   `installedSeedsKey` defaults entry doesn't exist yet, so this
+    ///   would naively re-add Explain/Ask too — the "already present by
+    ///   name" guard prevents that, and we then record all current seed
+    ///   names as offered so the guard isn't load-bearing on subsequent
+    ///   launches.
+    private func installNewFactorySeedsIfNeeded() {
+        let alreadyOffered = installedFactorySeedNames()
+        let existingNames = Set(presets.map { $0.name })
+        let candidates = PromptPreset.factorySeeds.filter {
+            !alreadyOffered.contains($0.name) && !existingNames.contains($0.name)
+        }
+        // Append to the end so existing sortOrder values are preserved.
+        let nextSortOrder = (presets.map { $0.sortOrder }.max() ?? 0) + 1
+        for (offset, seed) in candidates.enumerated() {
+            var copy = seed
+            copy.sortOrder = nextSortOrder + offset
+            presets.append(copy)
+            AppLogger.shared.info("Installed new factory preset seed: \(seed.name)")
+        }
+        // Record every current factory-seed name as offered, including ones
+        // we skipped because they already existed under that name. This
+        // turns the "already present" check into a one-time migration step
+        // rather than a forever guard against renames.
+        let allSeedNames = Set(PromptPreset.factorySeeds.map { $0.name })
+        let updated = alreadyOffered.union(allSeedNames)
+        if updated != alreadyOffered { markFactorySeedsInstalled(updated) }
+        if !candidates.isEmpty { save() }
+    }
+
+    private func installedFactorySeedNames() -> Set<String> {
+        guard let data = defaults.data(forKey: installedSeedsKey),
+              let arr = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return Set(arr)
+    }
+
+    private func markFactorySeedsInstalled(_ names: any Sequence<String>) {
+        let arr = Array(Set(names)).sorted()
+        if let data = try? JSONEncoder().encode(arr) {
+            defaults.set(data, forKey: installedSeedsKey)
         }
     }
 

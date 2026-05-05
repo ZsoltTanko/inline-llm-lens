@@ -53,7 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ServicesHandler.shared.configure(
             panelController: panelController,
             captureService: captureService,
-            settings: settings
+            settings: settings,
+            presetStore: presetStore
         )
         NSApp.servicesProvider = ServicesHandler.shared
         NSUpdateDynamicServices()
@@ -89,10 +90,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func invokeFromHotkey(preset: PromptPreset?) {
         Task { @MainActor in
-            if !AccessibilityCapture.isTrusted {
-                AccessibilityCapture.requestTrust()
+            // Resolve which preset will own this invocation up-front so we
+            // can skip selection capture entirely for direct-prompt presets
+            // (`capturesSelection == false`). Capturing a selection we'd
+            // immediately discard would only burn latency and, for the
+            // clipboard-fallback strategy, briefly clobber the user's
+            // pasteboard.
+            let effectivePreset = preset ?? presetStore.defaultPreset
+            let bundle: ContextBundle
+            if effectivePreset?.capturesSelection == false {
+                bundle = .empty()
+            } else {
+                if !AccessibilityCapture.isTrusted {
+                    AccessibilityCapture.requestTrust()
+                }
+                bundle = await captureService.captureForHotkey()
             }
-            let bundle = await captureService.captureForHotkey()
             // For the global "ask" hotkey, fall back to the legacy auto-send
             // setting; for per-preset hotkeys, the preset's own flag wins.
             if let preset {
@@ -105,8 +118,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func invokeFromMenu(preset: PromptPreset?) {
         Task { @MainActor in
-            let bundle = await captureService.captureForHotkey()
-            panelController.present(with: bundle, preset: preset ?? presetStore.defaultPreset, autoSendOverride: false)
+            let effectivePreset = preset ?? presetStore.defaultPreset
+            let bundle: ContextBundle
+            if effectivePreset?.capturesSelection == false {
+                bundle = .empty()
+            } else {
+                bundle = await captureService.captureForHotkey()
+            }
+            panelController.present(with: bundle, preset: effectivePreset, autoSendOverride: false)
         }
     }
 

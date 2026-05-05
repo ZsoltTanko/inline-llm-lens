@@ -139,6 +139,9 @@ struct PromptsSettingsView: View {
                     if let effort = preset.reasoningEffort, !effort.isEmpty {
                         Text("Reasoning: \(effort)").font(.caption2).foregroundStyle(.secondary)
                     }
+                    if !preset.capturesSelection {
+                        Text("Direct prompt").font(.caption2).foregroundStyle(.secondary)
+                    }
                     if preset.requiresUserInput {
                         Text("Input").font(.caption2).foregroundStyle(.secondary)
                     }

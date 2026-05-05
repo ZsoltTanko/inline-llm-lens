@@ -82,6 +82,10 @@ struct PromptPresetEditor: View {
             }
 
             Section("Behavior") {
+                Toggle("Capture selected text on invocation", isOn: $draft.capturesSelection)
+                Text("When off, the panel skips selection capture entirely and is a pure direct-prompt wrapper around the LLM — the user-input field becomes the LLM's user message. Pair with “Requires user input” so the panel waits for the user to type.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 Toggle("Requires user input", isOn: $draft.requiresUserInput)
                 if draft.requiresUserInput {
                     TextField(
@@ -94,6 +98,7 @@ struct PromptPresetEditor: View {
                     )
                 }
                 Toggle("Requires selection", isOn: $draft.requiresSelection)
+                    .disabled(!draft.capturesSelection)
                 Toggle("Auto-send on invocation", isOn: $draft.autoSend)
                 Toggle("Show in panel dropdown", isOn: $draft.pinnedInDropdown)
             }
@@ -204,7 +209,8 @@ struct PromptPresetEditor: View {
 
             GroupBox("Resolved user message") {
                 ScrollView {
-                    Text(sampleSelection.isEmpty ? "(empty)" : sampleSelection)
+                    let userMessage = draft.capturesSelection ? sampleSelection : sampleUserInput
+                    Text(userMessage.isEmpty ? "(empty)" : userMessage)
                         .font(.system(size: 12, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
@@ -219,6 +225,9 @@ struct PromptPresetEditor: View {
 
     private func commit() {
         var out = draft
+        // Direct-prompt presets never gate on selection — they don't capture
+        // one — so normalize the now-meaningless requiresSelection flag.
+        if !out.capturesSelection { out.requiresSelection = false }
         let trimmedTemp = temperatureText.trimmingCharacters(in: .whitespaces)
         out.temperature = Double(trimmedTemp)
         let trimmedMax = maxTokensText.trimmingCharacters(in: .whitespaces)

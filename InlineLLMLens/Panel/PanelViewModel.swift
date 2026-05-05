@@ -90,10 +90,25 @@ final class PanelViewModel: ObservableObject {
     /// When the user picks a different preset in the panel, honor that preset's
     /// preferred model (if any) — otherwise fall back to whatever was selected
     /// before, then to the global default.
+    ///
+    /// Also clears any captured selection when switching *into* a direct-prompt
+    /// preset (`capturesSelection == false`). Otherwise the selection captured
+    /// for the previously-active capturing preset would linger in the bundle
+    /// — invisible because the panel hides the preview row in this mode, but
+    /// `PromptBuilder.expand` would still substitute it into `{{selection}}`
+    /// and an inquisitive author would be surprised to see it. Keeping the
+    /// data and the UI coherent here means direct-prompt invocations always
+    /// look the same regardless of how the panel was originally opened.
     func onPresetChanged() {
-        if let preset = selectedPreset, let modelID = preset.preferredModelID,
-           modelStore.models.contains(where: { $0.id == modelID }) {
-            selectedModelID = modelID
+        if let preset = selectedPreset {
+            if let modelID = preset.preferredModelID,
+               modelStore.models.contains(where: { $0.id == modelID }) {
+                selectedModelID = modelID
+            }
+            if !preset.capturesSelection {
+                bundle.selectedText = ""
+                manualSelectedText = ""
+            }
         }
     }
 

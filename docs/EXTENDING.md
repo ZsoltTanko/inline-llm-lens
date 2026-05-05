@@ -58,7 +58,19 @@ Currently only `OpenAICompatibleClient` ships, but the protocol seam is in place
 
 ## Add a built-in default behavior — or just author a preset
 
-Prompt behavior is owned by user-defined `PromptPreset`s now; there's no enum to extend. To ship a new "out of the box" persona, add it to `PromptPreset.factorySeeds` in `InlineLLMLens/Prompts/PromptPreset.swift` (the array is used only on first launch when `prompts.json` is empty, so existing users' catalogs are never overwritten). The shared base copy is in `seedBaseSystemPrompt` — reuse it unless the new preset really needs different framing. Otherwise just create the preset in **Settings → Prompts**.
+Prompt behavior is owned by user-defined `PromptPreset`s now; there's no enum to extend. To ship a new "out of the box" persona, add it to `PromptPreset.factorySeeds` in `InlineLLMLens/Prompts/PromptPreset.swift`:
+
+- On a *fresh install* (`prompts.json` missing or empty), the entire `factorySeeds` array is installed and the first entry becomes the default preset.
+- On an *upgrade*, `PromptPresetStore.installNewFactorySeedsIfNeeded()` appends only the seeds whose names haven't been offered to this catalog before *and* aren't currently present. The migration ledger lives in `UserDefaults` under `InlineLLMLens.installedFactorySeedNames`. Once a seed name is recorded as offered, it's never reinstalled — so a seed the user later deletes stays gone.
+
+Two shared copies are kept as `fileprivate static let` constants so seed copy edits stay consistent: `seedBaseSystemPrompt` (the "lens over selected text" framing used by `Explain` and `Ask`) and `seedDirectPromptSystemPrompt` (the "type a question, get an answer" framing used by `Prompt`). Reuse them unless the new preset really needs different framing. Otherwise just create the preset in **Settings → Prompts**.
+
+A preset's *input modality* is implicit in two flags:
+
+- `capturesSelection: Bool` — whether the capture pipeline runs at all. `false` makes the preset a pure direct-prompt wrapper (no selection captured, `PanelView` hides the selection preview, `PromptBuilder` uses the user-input field as the user message). The `Prompt` factory seed is the canonical example.
+- `requiresUserInput: Bool` — whether `PanelViewModel.canSend` gates on the user-input field having content. Always pair with `capturesSelection: false` for a direct-prompt preset, otherwise auto-send would fire against an empty input.
+
+These two flags cover the three first-class modalities (selection-only, selection + input, input-only); see the table in [`ARCHITECTURE.md`](ARCHITECTURE.md#prompt-assembly).
 
 If you're adding a new template variable (currently `{{selection}}`, `{{userInput}}`, `{{app}}`, `{{windowTitle}}`, `{{date}}`):
 
@@ -90,14 +102,15 @@ For a typed boolean / string / enum / int setting:
 
 ## Add a new field to `ModelConfig` or `PromptPreset`
 
-Both are `Codable` and persisted to JSON. Optional fields are backward-compatible by default — Swift's synthesized `init(from:)` for an `Optional` property `decodeIfPresent`s, so older catalogs decode cleanly without bumping a version.
+Both are `Codable` and persisted to JSON.
 
-1. **Add the field** as `Optional` in the struct (`InlineLLMLens/Models/ModelConfig.swift` or `InlineLLMLens/Prompts/PromptPreset.swift`). Update the `init` defaults.
-2. **Surface it in the editor** — add a `@State` and a `TextField` / `Toggle` in the relevant editor (`ModelsSettingsView.ModelEditor` or `PromptPresetEditor`). Map it back into `draft` on Save. For numeric fields parsed from a string-backed `TextField`, use the existing `_panelWidthText` / `_panelHeightText` pattern as a template.
-3. **Use it downstream** — usually inside `OpenAICompatibleClient.buildRequest` (or your new provider) for `ModelConfig`, or inside `FloatingPanelController` / `PanelViewModel` for `PromptPreset`. Send / apply the field only when non-empty so non-supporting models or older presets aren't broken.
-4. **Write a test** if the field changes wire-format output or panel behaviour. The `URLProtocol` stub in `OpenAICompatibleClientTests` can capture the request body and assert against it.
+1. **Add the field** to the struct (`InlineLLMLens/Models/ModelConfig.swift` or `InlineLLMLens/Prompts/PromptPreset.swift`). Update the `init` defaults. Optional fields stay backward-compatible without ceremony — Swift's synthesised decoder `decodeIfPresent`s `Optional` properties. Non-optional fields need a default supplied by a custom decoder (see `PromptPreset.init(from:)`); pick a default that matches pre-existing behavior so the migration is invisible.
+2. **PromptPreset only — extend BOTH `CodingKeys` and `encode(to:)`.** `PromptPreset` has a hand-written `init(from:)`, which silently disables Swift's synthesis of `encode(to:)`. The encoder is therefore also hand-written and must list every field. **If you add a field to `init(from:)` but forget `encode(to:)`, the field round-trips inside a single process via property defaults but is dropped on save** — next launch decodes it as the default and the user's choice is silently lost. The `testCapturesSelectionRoundTripsThroughEncodeAndDecode` test asserts the encoded JSON string actually contains the new key; copy that pattern for any new field.
+3. **Surface it in the editor** — add a `@State` and a `TextField` / `Toggle` in the relevant editor (`ModelsSettingsView.ModelEditor` or `PromptPresetEditor`). Map it back into `draft` on Save. For numeric fields parsed from a string-backed `TextField`, use the existing `_panelWidthText` / `_panelHeightText` pattern as a template.
+4. **Use it downstream** — usually inside `OpenAICompatibleClient.buildRequest` (or your new provider) for `ModelConfig`, or inside `FloatingPanelController` / `PanelViewModel` for `PromptPreset`. Send / apply the field only when non-empty so non-supporting models or older presets aren't broken.
+5. **Write a test** if the field changes wire-format output or panel behaviour. The `URLProtocol` stub in `OpenAICompatibleClientTests` can capture the request body and assert against it.
 
-`reasoningEffort` (on `ModelConfig`) and `panelWidth` / `panelHeight` (on `PromptPreset`) are the canonical examples — search the codebase for them to see all the touch points.
+`reasoningEffort` (on `ModelConfig`) and `capturesSelection` / `panelWidth` / `panelHeight` (on `PromptPreset`) are the canonical examples — search the codebase for them to see all the touch points.
 
 ## Add a new field to `QueryHistoryEntry`
 

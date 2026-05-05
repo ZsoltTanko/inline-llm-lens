@@ -22,7 +22,13 @@ The product is positioned as **an inline semantic lens**, closer to Spotlight / 
    - Press **Option+Space** (configurable in Settings → General), or
    - Right-click → **Services → Ask Inline LLM**.
 
-Two prompt presets ship seeded on first launch — **Explain** (auto-sends with the selection) and **Ask** (requires a user instruction, appended as `{{userInput}}` to the system prompt). Both are editable in **Settings → Prompts**; seeding only runs when the prompts file is empty, so it never clobbers your catalog.
+Three prompt presets ship seeded on first launch, covering the app's three input modalities:
+
+- **Explain** — auto-sends with the captured selection. Pure "lens over selected text" mode.
+- **Ask** — captures the selection *and* requires a user instruction (appended via `{{userInput}}` to the system prompt). Selection plus question.
+- **Prompt** — skips selection capture entirely and is a direct chat-style wrapper: type a question, hit ⌘↵, get an answer. The user-input field becomes the LLM's user message.
+
+All three are editable in **Settings → Prompts**. The mode is controlled by two per-preset toggles in the editor — *Capture selected text on invocation* and *Requires user input* — so any combination is reachable, not just the seeded three. New factory seeds shipped in a future release are added on next launch *only when no preset with the same name already exists* and *only the first time the seed is offered* (so a seed you delete stays gone). The user-input field grows vertically with content (up to ~30 lines, then the panel scrolls) so multi-paragraph prompts work cleanly.
 
 **Panel keyboard shortcuts:**
 
@@ -44,7 +50,7 @@ Two prompt presets ship seeded on first launch — **Explain** (auto-sends with 
 - For *Stay on top* and *Recede to background*, the app temporarily promotes itself to a regular activation policy while the panel is alive, so it appears in **Cmd+Tab** and you can always bring it back to the foreground. *Close* keeps the lighter agent (`LSUIElement`) policy since the panel dismisses itself anyway.
 - Click-off only changes window level/focus — it never cancels an in-flight LLM stream. The stream is cancelled only when you actually close the panel (Esc / ✕) or invoke a new query.
 
-**Settings → General → History** controls a per-preset *recent queries* dropdown that appears in the panel next to the captured selection (small clock icon). Picking an entry restores the panel exactly as you saw it for that invocation — selection text, instruction field, model, and the streamed response — without re-running the LLM. Hit ⌘↵ if you want a fresh response. The integer setting caps how many entries are kept per preset (0 disables recording and hides the dropdown). Stored only on this Mac.
+**Settings → General → History** controls a per-preset *recent queries* dropdown (small clock icon). For capturing presets it appears in the row next to the captured selection; for direct-prompt presets — which have no selection row — it appears at the right edge of the panel header instead. Picking an entry restores the panel exactly as you saw it for that invocation — selection text (or user input for direct-prompt), instruction field, model, and the streamed response — without re-running the LLM. Hit ⌘↵ if you want a fresh response. The integer setting caps how many entries are kept per preset (0 disables recording and hides the dropdown). Stored only on this Mac.
 
 **Per-preset panel size.** In **Settings → Prompts → Edit**, each preset has an optional *Panel size* (width × height in points). Either dimension can be set independently — an unset one falls back to the default 460×380. Dragging the panel's edge to resize automatically saves the new size back to the active preset, so each preset opens at the size you last left it.
 

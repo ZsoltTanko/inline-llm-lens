@@ -20,7 +20,11 @@ struct PromptResolution: Equatable {
 ///
 /// Contract:
 /// - **system message** = preset's `systemPrompt` with template variables expanded.
-/// - **user message** = the captured selected text (verbatim, no wrapping).
+/// - **user message** =
+///     - the captured selected text when `preset.capturesSelection == true`
+///       (the canonical "lens over selection" mode), or
+///     - the user-typed input when `preset.capturesSelection == false`
+///       (the direct-prompt mode where the panel has no selection at all).
 struct PromptBuilder {
     func resolve(
         preset: PromptPreset,
@@ -35,7 +39,7 @@ struct PromptBuilder {
             app: bundle.frontmostAppName ?? "",
             windowTitle: bundle.frontmostWindowTitle ?? ""
         )
-        let user = bundle.selectedText
+        let user = preset.capturesSelection ? bundle.selectedText : userInput
 
         let messages: [ChatMessage] = [
             ChatMessage(role: .system, content: system),
